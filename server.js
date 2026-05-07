@@ -41,12 +41,18 @@ const UPI_ID = process.env.UPI_ID || "rahulsiva190@okicici";
 const PRICE_BW = Number(process.env.PRICE_BW || 1);
 const PRICE_COLOR = Number(process.env.PRICE_COLOR || 10);
 const PAYMENT_TIMEOUT_MINUTES = Number(process.env.PAYMENT_TIMEOUT_MINUTES || 5);
-const MAX_FORWARDABLE_PDF_MB = Number(process.env.MAX_FORWARDABLE_PDF_MB || 18);
+const MAIL_PROVIDER = resolveMailProvider();
+const MAX_FORWARDABLE_PDF_MB = resolveMaxForwardablePdfMb(MAIL_PROVIDER);
 const MAX_REQUEST_BODY_BYTES = Number(
   process.env.MAX_REQUEST_BODY_BYTES ||
     Math.ceil(MAX_FORWARDABLE_PDF_MB * 1024 * 1024 * 1.45 + 1.5 * 1024 * 1024)
 );
 const DRY_RUN_NOTIFICATIONS = String(process.env.DRY_RUN_NOTIFICATIONS || "").toLowerCase() === "true";
+const MAIL_FROM_EMAIL = sanitizeText(process.env.MAIL_FROM_EMAIL) || sanitizeText(process.env.SMTP_USER) || BUSINESS_EMAIL;
+const MAIL_FROM_NAME = sanitizeText(process.env.MAIL_FROM_NAME) || BUSINESS_NAME;
+const MJ_APIKEY_PUBLIC = sanitizeText(process.env.MJ_APIKEY_PUBLIC);
+const MJ_APIKEY_PRIVATE = sanitizeText(process.env.MJ_APIKEY_PRIVATE);
+const MAILJET_API_BASE = sanitizeText(process.env.MAILJET_API_BASE) || "https://api.mailjet.com/v3.1/send";
 
 const STATIC_FILES = {
   "/": "rahul-prints-pro-with-email.html",
@@ -65,7 +71,7 @@ const CONTENT_TYPES = {
 
 let transporter = null;
 
-if (process.env.SMTP_USER && process.env.SMTP_PASS) {
+if (MAIL_PROVIDER === "smtp" && process.env.SMTP_USER && process.env.SMTP_PASS) {
   transporter = nodemailer.createTransport({
     service: "gmail",
     auth: {
@@ -82,8 +88,16 @@ if (process.env.SMTP_USER && process.env.SMTP_PASS) {
       console.warn("SMTP verify failed:", error.message);
     }
   );
-} else {
+} else if (MAIL_PROVIDER === "smtp") {
   console.warn("SMTP credentials are missing. Email sending will fail until .env is configured.");
+} else if (MAIL_PROVIDER === "mailjet") {
+  if (!MJ_APIKEY_PUBLIC || !MJ_APIKEY_PRIVATE) {
+    console.warn("Mailjet API credentials are missing. Email sending will fail until .env is configured.");
+  } else {
+    console.log("Mail provider configured: Mailjet API.");
+  }
+} else {
+  console.warn("Email delivery is not configured. Set MAIL_PROVIDER to mailjet or smtp before deploying.");
 }
 
 ensureOrdersStore().catch((error) => {
@@ -193,6 +207,34 @@ function sanitizeText(value, fallback = "") {
   return String(value || fallback).trim();
 }
 
+function resolveMailProvider() {
+  const configuredProvider = sanitizeText(process.env.MAIL_PROVIDER).toLowerCase();
+  if (configuredProvider) {
+    return configuredProvider;
+  }
+
+  if (process.env.MJ_APIKEY_PUBLIC && process.env.MJ_APIKEY_PRIVATE) {
+    return "mailjet";
+  }
+
+  if (process.env.SMTP_USER && process.env.SMTP_PASS) {
+    return "smtp";
+  }
+
+  return "";
+}
+
+function resolveMaxForwardablePdfMb(mailProvider) {
+  const configuredLimitMb = Number(process.env.MAX_FORWARDABLE_PDF_MB || 18);
+
+  if (mailProvider === "mailjet") {
+    const mailjetSafeLimitMb = Number(process.env.EMAIL_ATTACHMENT_SAFE_MB || 10);
+    return Math.max(1, Math.min(configuredLimitMb, mailjetSafeLimitMb));
+  }
+
+  return configuredLimitMb;
+}
+
 function sanitizePythonExecutable(value) {
   const configured = sanitizeText(value);
   if (configured) {
@@ -268,6 +310,110 @@ function escapeHtml(value) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
+}
+
+function htmlToPlainText(html) {
+  return String(html || "")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n\n")
+    .replace(/<\/div>/gi, "\n")
+    .replace(/<li>/gi, "- ")
+    .replace(/<\/li>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/\r/g, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
+}
+
+function buildMailjetRecipients(addresses) {
+  return addresses.map((address) => ({
+    Email: address.email,
+    Name: address.name || address.email,
+  }));
+}
+
+function buildMailjetAttachments(attachments) {
+  return attachments.map((attachment) => ({
+    ContentType: attachment.contentType || "application/octet-stream",
+    Filename: attachment.filename,
+    Base64Content: Buffer.isBuffer(attachment.content)
+      ? attachment.content.toString("base64")
+      : Buffer.from(String(attachment.content || ""), "utf8").toString("base64"),
+  }));
+}
+
+async function sendMailjetEmail({ to, subject, html, attachments = [] }) {
+  if (!MJ_APIKEY_PUBLIC || !MJ_APIKEY_PRIVATE) {
+    const error = new Error("Mailjet is not configured. Add MJ_APIKEY_PUBLIC and MJ_APIKEY_PRIVATE to .env.");
+    error.statusCode = 500;
+    throw error;
+  }
+
+  const response = await fetch(MAILJET_API_BASE, {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${Buffer.from(`${MJ_APIKEY_PUBLIC}:${MJ_APIKEY_PRIVATE}`).toString("base64")}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      Messages: [
+        {
+          From: {
+            Email: MAIL_FROM_EMAIL,
+            Name: MAIL_FROM_NAME,
+          },
+          To: buildMailjetRecipients(Array.isArray(to) ? to : [to]),
+          Subject: subject,
+          HTMLPart: html,
+          TextPart: htmlToPlainText(html),
+          ReplyTo: {
+            Email: BUSINESS_EMAIL,
+            Name: BUSINESS_NAME,
+          },
+          Attachments: buildMailjetAttachments(attachments),
+        },
+      ],
+    }),
+  });
+
+  const responseText = await response.text();
+  let parsedResponse = null;
+
+  try {
+    parsedResponse = responseText ? JSON.parse(responseText) : null;
+  } catch {
+    parsedResponse = null;
+  }
+
+  if (!response.ok) {
+    const details =
+      parsedResponse?.Messages?.[0]?.Errors?.map((item) => item?.ErrorMessage || item?.ErrorIdentifier).filter(Boolean).join(" | ") ||
+      parsedResponse?.ErrorMessage ||
+      responseText ||
+      response.statusText;
+    const error = new Error(`Mailjet delivery failed: ${details}`);
+    error.statusCode = 502;
+    throw error;
+  }
+
+  const messageResult = parsedResponse?.Messages?.[0];
+  if (messageResult?.Status && String(messageResult.Status).toLowerCase() !== "success") {
+    const details =
+      messageResult?.Errors?.map((item) => item?.ErrorMessage || item?.ErrorIdentifier).filter(Boolean).join(" | ") ||
+      "Unknown Mailjet delivery error.";
+    const error = new Error(`Mailjet delivery failed: ${details}`);
+    error.statusCode = 502;
+    throw error;
+  }
+
+  return parsedResponse;
 }
 
 function isPdfBuffer(buffer) {
@@ -943,12 +1089,6 @@ async function sendOrderEmails(order, invoiceBuffer, uploadedPdf, verificationCh
     };
   }
 
-  if (!transporter) {
-    const error = new Error("SMTP is not configured. Add SMTP_USER and SMTP_PASS to .env.");
-    error.statusCode = 500;
-    throw error;
-  }
-
   const invoiceAttachment = {
     filename: `${order.orderId}.pdf`,
     content: invoiceBuffer,
@@ -960,22 +1100,47 @@ async function sendOrderEmails(order, invoiceBuffer, uploadedPdf, verificationCh
     contentType: uploadedPdf.contentType,
   };
 
-  await Promise.all([
-    transporter.sendMail({
-      from: `${BUSINESS_NAME} <${process.env.SMTP_USER}>`,
-      to: order.customer.email,
-      subject: `${getPaymentStatusLabel(order)} - Rahul Prints Order ${order.orderId}`,
-      html: buildCustomerEmail(order, verificationChecks),
-      attachments: [invoiceAttachment],
-    }),
-    transporter.sendMail({
-      from: `${BUSINESS_NAME} <${process.env.SMTP_USER}>`,
-      to: ORDER_NOTIFICATION_EMAIL,
-      subject: `${order.payment.method === "cod" ? "New pickup order" : "New paid order"} - ${order.orderId}`,
-      html: buildOwnerEmail(order, uploadedPdf, verificationChecks),
-      attachments: [invoiceAttachment, ownerPdfAttachment],
-    }),
-  ]);
+  if (MAIL_PROVIDER === "mailjet") {
+    await Promise.all([
+      sendMailjetEmail({
+        to: { email: order.customer.email, name: order.customer.name },
+        subject: `${getPaymentStatusLabel(order)} - Rahul Prints Order ${order.orderId}`,
+        html: buildCustomerEmail(order, verificationChecks),
+        attachments: [invoiceAttachment],
+      }),
+      sendMailjetEmail({
+        to: { email: ORDER_NOTIFICATION_EMAIL, name: BUSINESS_NAME },
+        subject: `${order.payment.method === "cod" ? "New pickup order" : "New paid order"} - ${order.orderId}`,
+        html: buildOwnerEmail(order, uploadedPdf, verificationChecks),
+        attachments: [invoiceAttachment, ownerPdfAttachment],
+      }),
+    ]);
+  } else {
+    if (!transporter) {
+      const error = new Error(
+        "Email delivery is not configured. Set MAIL_PROVIDER=mailjet with Mailjet API keys or configure SMTP credentials."
+      );
+      error.statusCode = 500;
+      throw error;
+    }
+
+    await Promise.all([
+      transporter.sendMail({
+        from: `${MAIL_FROM_NAME} <${MAIL_FROM_EMAIL}>`,
+        to: order.customer.email,
+        subject: `${getPaymentStatusLabel(order)} - Rahul Prints Order ${order.orderId}`,
+        html: buildCustomerEmail(order, verificationChecks),
+        attachments: [invoiceAttachment],
+      }),
+      transporter.sendMail({
+        from: `${MAIL_FROM_NAME} <${MAIL_FROM_EMAIL}>`,
+        to: ORDER_NOTIFICATION_EMAIL,
+        subject: `${order.payment.method === "cod" ? "New pickup order" : "New paid order"} - ${order.orderId}`,
+        html: buildOwnerEmail(order, uploadedPdf, verificationChecks),
+        attachments: [invoiceAttachment, ownerPdfAttachment],
+      }),
+    ]);
+  }
 
   return {
     customer: order.customer.email,
