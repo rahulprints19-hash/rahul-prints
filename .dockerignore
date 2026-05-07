@@ -1,0 +1,14 @@
+.env
+.git
+.gitignore
+node_modules
+data
+renders
+__pycache__
+*.log
+*.png
+*.pdf
+dummy-port.err.log
+dummy-port.out.log
+server-port-test.err.log
+server-port-test.out.log

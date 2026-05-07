@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Rahul Prints - professional print ordering with UPI payments, PDF invoices, and fast email confirmations.">
+  <title>Rahul Prints | Professional Print Orders</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=Outfit:wght@500;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+  <link rel="stylesheet" href="/styles.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" defer></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" defer></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.2/jspdf.umd.min.js" defer></script>
+  <script src="/config.js" defer></script>
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <header class="site-header">
+    <div class="container header-shell">
+      <a href="#home" class="brand">
+        <span class="brand-mark"><i class="fas fa-print"></i></span>
+        <span>
+          <strong>Rahul Prints</strong>
+          <small>Fast print orders in Puducherry</small>
+        </span>
+      </a>
+      <div class="header-actions">
+        <nav class="top-nav">
+          <a href="#services">Services</a>
+          <a href="#order">Order</a>
+          <a href="#contact">Contact</a>
+        </nav>
+        <a href="#order" class="header-cta">Start Order</a>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section id="home" class="hero">
+      <div class="container hero-grid">
+        <div class="hero-copy">
+          <span class="eyebrow">Production-ready ordering flow</span>
+          <h1>Upload, pay by UPI, and receive your order invoice instantly.</h1>
+          <p>
+            Rahul Prints now supports QR and UPI app payments with a real confirmation step,
+            automatic PDF invoice generation, and email delivery for both customer and owner.
+          </p>
+          <div class="hero-chips">
+            <span class="hero-chip"><i class="fas fa-file-pdf"></i> Auto page detection</span>
+            <span class="hero-chip"><i class="fas fa-envelope-open-text"></i> Owner email forwarding</span>
+            <span class="hero-chip"><i class="fas fa-shield-check"></i> Verified payment receipt</span>
+          </div>
+          <div class="hero-actions">
+            <a href="#order" class="btn btn-primary">Place an Order</a>
+            <a href="#contact" class="btn btn-secondary">Talk to Rahul</a>
+          </div>
+          <div class="hero-points">
+            <span><i class="fas fa-circle-check"></i> UPI deep link launch</span>
+            <span><i class="fas fa-circle-check"></i> Visible payment timer</span>
+            <span><i class="fas fa-circle-check"></i> PDF invoice by email</span>
+          </div>
+        </div>
+        <div class="hero-panel">
+          <div class="hero-card hero-preview-card">
+            <div class="hero-card-top">
+              <div>
+                <p class="hero-card-label">Payment desk preview</p>
+                <h2>Designed for fast walk-in printing</h2>
+              </div>
+              <span class="hero-badge">Live invoice flow</span>
+            </div>
+            <div class="hero-flow-list">
+              <article class="hero-flow-item">
+                <span class="hero-flow-step">01</span>
+                <div>
+                  <strong>Upload and analyse</strong>
+                  <p>Detect total pages, color pages, and black & white pricing from the PDF.</p>
+                </div>
+              </article>
+              <article class="hero-flow-item">
+                <span class="hero-flow-step">02</span>
+                <div>
+                  <strong>Collect payment cleanly</strong>
+                  <p>Generate a proper UPI amount, timer, QR code, and transaction confirmation step.</p>
+                </div>
+              </article>
+              <article class="hero-flow-item">
+                <span class="hero-flow-step">03</span>
+                <div>
+                  <strong>Send to print desk instantly</strong>
+                  <p>Email the payment slip and the customer PDF so the shop can print immediately.</p>
+                </div>
+              </article>
+            </div>
+            <div class="hero-metrics">
+              <div class="hero-metric">
+                <span>Payment slip</span>
+                <strong>Professional PDF</strong>
+              </div>
+              <div class="hero-metric">
+                <span>Customer file</span>
+                <strong>Owner inbox ready</strong>
+              </div>
+              <div class="hero-metric">
+                <span>Designed for</span>
+                <strong>Mobile + Desktop</strong>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="services" class="section section-soft">
+      <div class="container">
+        <div class="section-heading">
+          <span class="eyebrow">Services</span>
+          <h2>Everything needed for print-ready orders</h2>
+          <p class="section-copy">A customer can upload a PDF, pay in the same flow, and leave with a clear payment record while the print desk receives the original file.</p>
+        </div>
+        <div class="service-grid">
+          <article class="service-card">
+            <i class="fas fa-file-pdf"></i>
+            <h3>Document Printing</h3>
+            <p>Automatic PDF color analysis for accurate B/W and color pricing.</p>
+          </article>
+          <article class="service-card">
+            <i class="fas fa-qrcode"></i>
+            <h3>QR + UPI Payments</h3>
+            <p>Scan QR or open Google Pay, PhonePe, Paytm, BHIM, and other installed UPI apps.</p>
+          </article>
+          <article class="service-card">
+            <i class="fas fa-file-invoice"></i>
+            <h3>Instant Invoices</h3>
+            <p>Generate a polished customer PDF and send email confirmations automatically.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="order" class="section">
+      <div class="container">
+        <div class="section-heading">
+          <span class="eyebrow">Order Desk</span>
+          <h2>Submit your print request</h2>
+          <p class="section-copy">Review the job, complete payment inside the timer, then confirm with the UPI transaction reference.</p>
+        </div>
+
+        <div class="journey-strip">
+          <article class="journey-card">
+            <span class="journey-step">Step 1</span>
+            <strong>Upload PDF</strong>
+            <p>Automatic page analysis gives the customer a transparent total before payment.</p>
+          </article>
+          <article class="journey-card">
+            <span class="journey-step">Step 2</span>
+            <strong>Collect Payment</strong>
+            <p>Use QR or a UPI app, then confirm with the exact transaction details.</p>
+          </article>
+          <article class="journey-card">
+            <span class="journey-step">Step 3</span>
+            <strong>Print Desk Ready</strong>
+            <p>The owner receives both the original PDF and the payment slip by email.</p>
+          </article>
+        </div>
+
+        <div class="order-grid">
+          <aside class="info-column">
+            <div class="info-card">
+              <div class="info-card-head">
+                <i class="fas fa-tags"></i>
+                <h3>Price Guide</h3>
+              </div>
+              <div class="price-row">
+                <span>B/W page</span>
+                <strong id="priceBwDisplay">Rs 1</strong>
+              </div>
+              <div class="price-row">
+                <span>Color page</span>
+                <strong id="priceColorDisplay">Rs 10</strong>
+              </div>
+            </div>
+            <div class="info-card">
+              <div class="info-card-head">
+                <i class="fas fa-circle-info"></i>
+                <h3>Payment Rules</h3>
+              </div>
+              <ul class="info-list">
+                <li>UPI sessions stay active for <span id="paymentWindowDisplay">5 minutes</span>.</li>
+                <li>Pricing is calculated only from the uploaded PDF analysis.</li>
+                <li>Duplicate UPI transaction IDs are rejected automatically.</li>
+                <li>Invoice PDF is generated after payment details are confirmed.</li>
+              </ul>
+            </div>
+            <div class="info-card">
+              <div class="info-card-head">
+                <i class="fas fa-headset"></i>
+                <h3>Need help?</h3>
+              </div>
+              <p>Call directly if the QR code does not scan or your UPI app does not return to the page.</p>
+              <a id="supportPhoneLink" class="inline-link" href="tel:+919345574203">Call support</a>
+            </div>
+          </aside>
+
+          <div class="form-column">
+            <div id="costDisplay" class="analysis-card is-hidden">
+              <div class="analysis-head">
+                <div>
+                  <h3>Auto-Detected PDF Pricing</h3>
+                  <p>The system shows exact black and white pages, color pages, and the live total based on copies.</p>
+                </div>
+                <span id="analysisBadgeText" class="analysis-badge">Calculated from uploaded PDF</span>
+              </div>
+              <div class="analysis-grid">
+                <div>
+                  <span>B/W Pages</span>
+                  <strong id="bwCount">0</strong>
+                </div>
+                <div>
+                  <span>Color Pages</span>
+                  <strong id="colorCount">0</strong>
+                </div>
+                <div>
+                  <span>Total Pages</span>
+                  <strong id="totalPages">0</strong>
+                </div>
+                <div>
+                  <span>Copies</span>
+                  <strong id="copiesPreview">1</strong>
+                </div>
+                <div>
+                  <span>Cost Per Copy</span>
+                  <strong id="costPerCopy">Rs 0</strong>
+                </div>
+                <div>
+                  <span>Total Price</span>
+                  <strong id="totalPrice">Rs 0</strong>
+                </div>
+              </div>
+              <div class="analysis-breakdown">
+                <div class="breakdown-row">
+                  <span>Black & White Pricing</span>
+                  <strong id="bwPricingLine">0 pages x Rs 1 = Rs 0 per copy</strong>
+                </div>
+                <div class="breakdown-row">
+                  <span>Color Pricing</span>
+                  <strong id="colorPricingLine">0 pages x Rs 10 = Rs 0 per copy</strong>
+                </div>
+                <div class="breakdown-row total-row">
+                  <span>Grand Total</span>
+                  <strong id="grandTotalLine">Rs 0</strong>
+                </div>
+              </div>
+            </div>
+
+            <form id="uploadForm" class="panel">
+              <div class="panel-head">
+                <span class="panel-kicker">Customer details + file upload</span>
+                <h3>Order Form</h3>
+                <p>Upload a file, add print details, and continue to payment.</p>
+              </div>
+
+              <label class="field">
+                <span>Upload File</span>
+                <div class="upload-box">
+                  <input type="file" id="fileInput" accept=".pdf,application/pdf">
+                  <div class="upload-box-copy">
+                    <i class="fas fa-cloud-arrow-up"></i>
+                    <strong>Select a PDF file</strong>
+                    <small>Pricing, payment slip details, and owner email forwarding are based on the uploaded PDF.</small>
+                  </div>
+                </div>
+                <small id="fileName" class="field-note">No PDF selected yet.</small>
+              </label>
+
+              <div class="print-mode-card">
+                <div class="print-mode-copy">
+                  <span class="panel-kicker">Print mode</span>
+                  <h4>Black & White (B/W) only</h4>
+                  <p id="bwModeHint">Upload a PDF to compare the standard color mix with the cheaper B/W-only printing option.</p>
+                </div>
+                <label class="mode-switch">
+                  <input type="checkbox" id="bwModeToggle">
+                  <span class="mode-switch-ui" aria-hidden="true"></span>
+                  <span class="mode-switch-copy">
+                    <strong>B/W only</strong>
+                    <small id="bwModeStatus">Upload PDF first</small>
+                  </span>
+                </label>
+              </div>
+
+              <div id="bwSavingsBanner" class="bw-savings is-hidden">
+                <i class="fas fa-money-bill-wave"></i>
+                <div>
+                  <strong id="bwSavingsTitle">Save with B/W printing</strong>
+                  <span id="bwSavingsText">Convert all pages into black and white to reduce the total price.</span>
+                </div>
+              </div>
+
+              <div class="field-grid">
+                <label class="field">
+                  <span>Copies</span>
+                  <input type="number" id="copies" min="1" max="100" value="1" required>
+                </label>
+                <label class="field">
+                  <span>Paper Size</span>
+                  <select id="paperSize" required>
+                    <option value="a4">A4</option>
+                    <option value="a3">A3</option>
+                    <option value="letter">Letter</option>
+                  </select>
+                </label>
+              </div>
+
+              <label class="field">
+                <span>Name</span>
+                <input type="text" id="name" placeholder="Customer name" required>
+              </label>
+
+              <div class="field-grid">
+                <label class="field">
+                  <span>Phone</span>
+                  <input type="tel" id="phone" placeholder="+91 XXXXX XXXXX" required>
+                </label>
+
+                <label class="field">
+                  <span>Email</span>
+                  <input type="email" id="email" placeholder="customer@email.com" required>
+                </label>
+              </div>
+
+              <label class="field">
+                <span>Special Instructions</span>
+                <textarea id="notes" rows="4" placeholder="Binding, one-sided print, urgent request, etc."></textarea>
+              </label>
+
+              <button type="submit" class="btn btn-primary btn-full">
+                <i class="fas fa-credit-card"></i>
+                Review Order and Pay
+              </button>
+
+              <div class="form-footnote">
+                <i class="fas fa-lock"></i>
+                <span>The uploaded PDF is used for page pricing, payment slip generation, and forwarding to the print desk after confirmation.</span>
+              </div>
+            </form>
+
+            <section id="paymentSection" class="panel payment-panel-shell is-hidden">
+              <div class="panel-head payment-head">
+                <div>
+                  <span class="panel-kicker">Guided payment confirmation</span>
+                  <h3>Complete Payment</h3>
+                  <p id="paymentDetails">Review the summary below.</p>
+                </div>
+                <div class="timer-chip" id="timerChip">
+                  <i class="fas fa-hourglass-half"></i>
+                  <span id="paymentTimer">05:00</span>
+                </div>
+              </div>
+
+                <div class="payment-progress">
+                  <div class="payment-progress-item" data-payment-step="review">
+                    <span>1</span>
+                    <strong>Review order</strong>
+                  </div>
+                  <div class="payment-progress-item" data-payment-step="pay">
+                    <span>2</span>
+                    <strong>Pay with UPI</strong>
+                  </div>
+                  <div class="payment-progress-item" data-payment-step="receipt">
+                    <span>3</span>
+                    <strong>Get receipt</strong>
+                  </div>
+                </div>
+
+              <div class="summary-card">
+                <div>
+                  <span>Total Amount</span>
+                  <strong id="paymentAmount">Rs 0</strong>
+                </div>
+                <div>
+                  <span>Order ID</span>
+                  <strong id="orderIdDisplay">Pending</strong>
+                </div>
+              </div>
+
+              <div class="method-tabs">
+                <button type="button" class="method-tab is-active" data-method="upi">UPI Payment</button>
+                <button type="button" class="method-tab" data-method="cod">Cash on Pickup</button>
+              </div>
+
+              <div id="upiPanel" class="payment-mode">
+                <div class="payment-layout">
+                  <div class="qr-card">
+                    <p class="qr-title">Scan QR or open any installed UPI app</p>
+                    <div id="qrCode" class="qr-code"></div>
+                    <p class="upi-meta">UPI ID: <strong id="upiIdText">rahulsiva190@okicici</strong></p>
+                    <div class="action-stack">
+                      <button type="button" id="upiLaunchButton" class="btn btn-primary btn-full">
+                        <i class="fas fa-mobile-screen-button"></i>
+                        Pay with UPI
+                      </button>
+                      <button type="button" id="copyUpiButton" class="btn btn-secondary btn-full">
+                        <i class="fas fa-copy"></i>
+                        Copy UPI ID
+                      </button>
+                    </div>
+                  </div>
+
+                  <div class="confirm-card">
+                    <div class="status-note">
+                      <strong>Important:</strong>
+                      The payment page will only show success after you submit the UPI transaction ID and the payer UPI ID.
+                    </div>
+                    <ol class="steps-list">
+                      <li>Scan the QR or tap the UPI button.</li>
+                      <li>Complete payment inside your UPI app.</li>
+                      <li>Return here and submit the exact transaction ID and your UPI ID.</li>
+                    </ol>
+
+                    <div id="paymentFeedback" class="payment-feedback is-hidden" aria-live="polite" aria-atomic="true"></div>
+
+                    <form id="paymentConfirmationForm" class="confirm-form">
+                      <label class="field">
+                        <span>UPI App Used</span>
+                        <select id="paymentApp" required>
+                          <option value="">Choose app</option>
+                          <option value="Google Pay">Google Pay</option>
+                          <option value="PhonePe">PhonePe</option>
+                          <option value="Paytm">Paytm</option>
+                          <option value="BHIM">BHIM</option>
+                          <option value="Other UPI App">Other UPI App</option>
+                        </select>
+                      </label>
+
+                      <label class="field">
+                        <span>UPI Transaction / Reference ID</span>
+                        <input type="text" id="transactionId" placeholder="Example: 423456789012" inputmode="text" autocapitalize="characters" autocomplete="off" spellcheck="false" maxlength="40" required>
+                      </label>
+
+                      <label class="field">
+                        <span>Your UPI ID</span>
+                        <input type="text" id="payerUpiId" placeholder="Example: yourname@okaxis" inputmode="email" autocapitalize="off" autocomplete="off" spellcheck="false" maxlength="80" required>
+                      </label>
+
+                      <div class="verification-note">
+                        We block reused transaction IDs and record the payer UPI ID for verification against the received payment.
+                      </div>
+
+                      <button type="submit" id="confirmPaymentButton" class="btn btn-primary btn-full">
+                        <i class="fas fa-circle-check"></i>
+                        Confirm Payment
+                      </button>
+                    </form>
+                  </div>
+                </div>
+              </div>
+
+              <div id="codPanel" class="payment-mode is-hidden">
+                <div class="cod-card">
+                  <span class="panel-kicker">Alternate flow</span>
+                  <h4>Cash on Pickup</h4>
+                  <p>Use this only when the customer will pay at pickup. The order slip PDF and emails will still be generated immediately.</p>
+                  <button type="button" id="confirmCodButton" class="btn btn-secondary">
+                    <i class="fas fa-receipt"></i>
+                    Confirm Pickup Order
+                  </button>
+                </div>
+              </div>
+
+               <div id="paymentSuccess" class="success-card is-hidden" tabindex="-1" aria-live="polite">
+                <div class="success-hero">
+                  <div class="success-mark"><i class="fas fa-circle-check"></i></div>
+                  <div class="success-copy">
+                    <span class="success-badge">Receipt Ready</span>
+                    <h3 id="successTitle">Payment Completed Successfully.</h3>
+                    <p id="successLead">Your order is confirmed, the payment slip is ready, and the customer PDF has been forwarded to the print desk email.</p>
+                  </div>
+                </div>
+                <div id="deliveryStatus" class="delivery-status"></div>
+                <div class="success-actions">
+                  <button type="button" id="downloadInvoiceButton" class="btn btn-primary">
+                    <i class="fas fa-file-arrow-down"></i>
+                    Download Payment Slip PDF
+                  </button>
+                  <button type="button" id="newOrderButton" class="btn btn-secondary">
+                    <i class="fas fa-rotate-right"></i>
+                    Place Another Order
+                  </button>
+                </div>
+              </div>
+            </section>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="contact" class="section section-soft">
+      <div class="container">
+        <div class="section-heading">
+          <span class="eyebrow">Contact</span>
+          <h2>Reach Rahul Prints directly</h2>
+          <p class="section-copy">Customers can complete orders online, but support is still one tap away if they need help with UPI or file preparation.</p>
+        </div>
+        <div class="contact-grid">
+          <article class="contact-card">
+            <i class="fas fa-location-dot"></i>
+            <h3>Location</h3>
+            <p>Lawspet, Puducherry</p>
+          </article>
+          <article class="contact-card">
+            <i class="fas fa-phone"></i>
+            <h3>Phone</h3>
+            <p id="contactPhoneText">+91 93455 74203</p>
+          </article>
+          <article class="contact-card">
+            <i class="fas fa-envelope"></i>
+            <h3>Email</h3>
+            <p id="contactEmailText">rahulprints19@gmail.com</p>
+          </article>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container footer-shell">
+      <p>Rahul Prints</p>
+      <p>Professional printing with faster digital order handling.</p>
+    </div>
+  </footer>
+
+  <div id="toast" class="toast" aria-live="polite"></div>
+</body>
+</html>
