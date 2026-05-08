@@ -1937,7 +1937,7 @@ button {
 .mobile-order-bar {
   position: fixed;
   left: 50%;
-  bottom: 16px;
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
   z-index: 35;
   display: none;
   align-items: center;
@@ -1951,6 +1951,12 @@ button {
   box-shadow: 0 24px 36px rgba(18, 63, 157, 0.28);
   transform: translateX(-50%);
   font-weight: 800;
+}
+
+body.has-active-payment-session .mobile-order-bar {
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, 16px);
 }
 
 .toast {
@@ -2061,6 +2067,10 @@ button {
     background-size: 34px 34px;
   }
 
+  .site-header {
+    backdrop-filter: blur(10px);
+  }
+
   .header-shell,
   .header-actions,
   .payment-head,
@@ -2068,6 +2078,30 @@ button {
   .footer-shell {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .header-shell {
+    min-height: auto;
+    padding: 14px 0 12px;
+  }
+
+  .brand {
+    align-items: flex-start;
+  }
+
+  .brand-mark {
+    width: 48px;
+    height: 48px;
+  }
+
+  .brand strong {
+    font-size: 1.08rem;
+  }
+
+  .brand-status {
+    font-size: 0.68rem;
+    line-height: 1.45;
+    letter-spacing: 0.08em;
   }
 
   .top-nav {
@@ -2163,6 +2197,28 @@ button {
     display: inline-flex;
   }
 
+  #paymentSection,
+  #paymentSuccess {
+    scroll-margin-top: 176px;
+  }
+
+  .payment-panel-shell {
+    margin-top: 6px;
+  }
+
+  .payment-layout {
+    gap: 16px;
+  }
+
+  .qr-code {
+    min-height: 220px;
+  }
+
+  .qr-code img {
+    max-width: 100%;
+    height: auto;
+  }
+
   .site-footer {
     padding-bottom: 96px;
   }
@@ -2173,6 +2229,21 @@ button {
 
   .mobile-upi-grid {
     grid-template-columns: 1fr;
+  }
+
+  .upi-app-button {
+    padding: 13px 14px;
+  }
+
+  .upi-app-mark {
+    width: 40px;
+    height: 40px;
+    border-radius: 13px;
+  }
+
+  .upi-app-logo {
+    width: 25px;
+    height: 25px;
   }
 }
 

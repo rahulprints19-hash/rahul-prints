@@ -682,6 +682,7 @@ function renderPaymentSession({ restartTimer, resetConfirmationFields, keepScrol
   }
 
   clearPaymentFeedback();
+  setPaymentSessionState(true);
   setPaymentProgress("pay");
   setPaymentMethod(state.paymentMethod || "upi");
   createUpiQr();
@@ -695,8 +696,30 @@ function renderPaymentSession({ restartTimer, resetConfirmationFields, keepScrol
   }
 
   if (!keepScroll) {
-    elements.paymentSection.scrollIntoView({ behavior: "smooth", block: "start" });
+    scrollToElementWithHeaderOffset(elements.paymentSection);
   }
+}
+
+function setPaymentSessionState(isActive) {
+  document.body.classList.toggle("has-active-payment-session", Boolean(isActive));
+}
+
+function getStickyHeaderOffset() {
+  const header = document.querySelector(".site-header");
+  const headerHeight = header ? header.getBoundingClientRect().height : 0;
+  return headerHeight + 18;
+}
+
+function scrollToElementWithHeaderOffset(element) {
+  if (!element) {
+    return;
+  }
+
+  const top = Math.max(0, window.scrollY + element.getBoundingClientRect().top - getStickyHeaderOffset());
+  window.scrollTo({
+    top,
+    behavior: "smooth",
+  });
 }
 
 function setPaymentProgress(step) {
@@ -771,6 +794,16 @@ function buildPreferredUpiLaunchLink(appKey) {
   return buildUpiLink();
 }
 
+function navigateToDeepLink(url) {
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.rel = "noopener";
+  anchor.style.display = "none";
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+}
+
 function openUpiLink(preferredLink, fallbackLink = "") {
   window.clearTimeout(state.upiFallbackTimerId);
 
@@ -798,7 +831,7 @@ function openUpiLink(preferredLink, fallbackLink = "") {
     }, 900);
   }
 
-  window.location.assign(preferredLink);
+  navigateToDeepLink(preferredLink);
 
   window.setTimeout(() => {
     document.removeEventListener("visibilitychange", handleVisibilityChange);
@@ -1205,6 +1238,8 @@ function resetPendingPaymentSession() {
   state.currentOrder = null;
   state.paymentExpiresAt = null;
   state.timerExpired = false;
+  window.clearTimeout(state.upiFallbackTimerId);
+  setPaymentSessionState(false);
   elements.paymentSection.classList.add("is-hidden");
   elements.paymentSuccess.classList.add("is-hidden");
   elements.deliveryStatus.innerHTML = "";
