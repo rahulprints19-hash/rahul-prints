@@ -30,6 +30,7 @@ const PYTHON_EXECUTABLE_ARGS = process.env.PYTHON_EXECUTABLE
     ? ["-3"]
     : [];
 const PORT = Number(process.env.PORT || 3000);
+const HOST = sanitizeText(process.env.HOST) || "0.0.0.0";
 const MAX_PORT_FALLBACK_ATTEMPTS = 10;
 const PDF_ANALYSIS_TIMEOUT_MS = Number(process.env.PDF_ANALYSIS_TIMEOUT_MS || 45000);
 const PDF_CONVERSION_TIMEOUT_MS = Number(process.env.PDF_CONVERSION_TIMEOUT_MS || 180000);
@@ -95,6 +96,11 @@ if (MAIL_PROVIDER === "smtp" && process.env.SMTP_USER && process.env.SMTP_PASS) 
     console.warn("Mailjet API credentials are missing. Email sending will fail until .env is configured.");
   } else {
     console.log("Mail provider configured: Mailjet API.");
+    if (isFreemailSenderAddress(MAIL_FROM_EMAIL)) {
+      console.warn(
+        "Mailjet is using a free webmail sender address. Gmail/Outlook/Yahoo sender addresses often fail DMARC checks or land in spam. Prefer SMTP for local testing or a verified custom domain sender for Mailjet."
+      );
+    }
   }
 } else {
   console.warn("Email delivery is not configured. Set MAIL_PROVIDER to mailjet or smtp before deploying.");
@@ -205,6 +211,21 @@ function readRequestBuffer(request) {
 
 function sanitizeText(value, fallback = "") {
   return String(value || fallback).trim();
+}
+
+function isFreemailSenderAddress(email) {
+  const domain = sanitizeText(email).split("@")[1]?.toLowerCase();
+  return [
+    "gmail.com",
+    "googlemail.com",
+    "hotmail.com",
+    "outlook.com",
+    "live.com",
+    "yahoo.com",
+    "ymail.com",
+    "aol.com",
+    "icloud.com",
+  ].includes(domain);
 }
 
 function resolveMailProvider() {
@@ -1320,17 +1341,17 @@ function startServer(preferredPort, attempt = 0) {
   server.once("error", (error) => {
     if (error.code === "EADDRINUSE" && attempt < MAX_PORT_FALLBACK_ATTEMPTS) {
       const nextPort = currentPort + 1;
-      console.warn(`Port ${currentPort} is already in use. Trying http://localhost:${nextPort} instead...`);
+      console.warn(`Port ${currentPort} on ${HOST} is already in use. Trying http://${HOST}:${nextPort} instead...`);
       startServer(preferredPort, attempt + 1);
       return;
     }
 
-    console.error(`Could not start Rahul Prints on port ${currentPort}.`);
+    console.error(`Could not start Rahul Prints on ${HOST}:${currentPort}.`);
     throw error;
   });
 
-  server.listen(currentPort, () => {
-    console.log(`Rahul Prints server is running on http://localhost:${currentPort}`);
+  server.listen(currentPort, HOST, () => {
+    console.log(`Rahul Prints server is running on http://${HOST}:${currentPort}`);
   });
 }
 

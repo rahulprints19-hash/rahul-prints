@@ -1,0 +1,16 @@
+[Unit]
+Description=Rahul Prints web app
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/rahul-prints
+Environment=NODE_ENV=production
+EnvironmentFile=/opt/rahul-prints/.env
+ExecStart=/usr/bin/env npm start
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

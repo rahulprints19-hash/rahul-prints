@@ -6,3 +6,42 @@ services:
     dockerfilePath: ./Dockerfile
     dockerContext: .
     healthCheckPath: /api/health
+    envVars:
+      - key: PORT
+        value: "8000"
+      - key: BUSINESS_NAME
+        value: Rahul Prints
+      - key: BUSINESS_EMAIL
+        value: rahulprints19@gmail.com
+      - key: ORDER_NOTIFICATION_EMAIL
+        value: rahulprints19@gmail.com
+      - key: BUSINESS_PHONE
+        value: "+919345574203"
+      - key: UPI_ID
+        value: rahulsiva190@okicici
+      - key: PRICE_BW
+        value: "1"
+      - key: PRICE_COLOR
+        value: "10"
+      - key: PAYMENT_TIMEOUT_MINUTES
+        value: "5"
+      - key: MAX_FORWARDABLE_PDF_MB
+        value: "18"
+      - key: DRY_RUN_NOTIFICATIONS
+        value: "false"
+      - key: PDF_ANALYSIS_TIMEOUT_MS
+        value: "45000"
+      - key: PDF_CONVERSION_TIMEOUT_MS
+        value: "120000"
+      - key: EMAIL_ATTACHMENT_SAFE_MB
+        value: "10"
+      - key: MAIL_PROVIDER
+        value: mailjet
+      - key: MAIL_FROM_EMAIL
+        sync: false
+      - key: MAIL_FROM_NAME
+        value: Rahul Prints
+      - key: MJ_APIKEY_PUBLIC
+        sync: false
+      - key: MJ_APIKEY_PRIVATE
+        sync: false

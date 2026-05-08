@@ -10,13 +10,6 @@ This project no longer uses Firebase.
 Required values
 ---------------
 
-`SMTP_USER`
-Gmail address used to send invoices.
-
-`SMTP_PASS`
-Gmail App Password for the SMTP account above.
-Do not use your normal Gmail password.
-
 `BUSINESS_EMAIL`
 Owner email address that should receive every order PDF.
 
@@ -25,6 +18,39 @@ Phone number shown in the UI and in generated invoices.
 
 `UPI_ID`
 UPI ID used for the payment QR code and deep link.
+
+Choose one email provider
+-------------------------
+
+For local testing, use Gmail SMTP:
+
+`MAIL_PROVIDER=smtp`
+Uses your Gmail account directly.
+
+`SMTP_USER`
+Gmail address used to send invoices.
+
+`SMTP_PASS`
+Gmail App Password for the SMTP account above.
+Do not use your normal Gmail password.
+
+For Render or other hosts that block SMTP, use Mailjet:
+
+`MAIL_PROVIDER=mailjet`
+Uses Mailjet's HTTPS API instead of SMTP.
+
+`MAIL_FROM_EMAIL`
+Verified sender address shown in the From header.
+Avoid free Gmail, Yahoo, Outlook, or Hotmail addresses with Mailjet, because deliverability may fail.
+
+`MAIL_FROM_NAME`
+Display name shown to customers.
+
+`MJ_APIKEY_PUBLIC`
+Mailjet API key.
+
+`MJ_APIKEY_PRIVATE`
+Mailjet secret key.
 
 Optional values
 ---------------

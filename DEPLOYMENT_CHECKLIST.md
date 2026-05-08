@@ -11,9 +11,12 @@ Rahul Prints Deployment Checklist
 3. Create environment file
    Copy `.env.example` to `.env`
 
-4. Configure SMTP
+4. Configure email
+   For local testing: set `MAIL_PROVIDER=smtp`
    Add your Gmail address to `SMTP_USER`
    Add a Gmail App Password to `SMTP_PASS`
+   For Render free deployment: set `MAIL_PROVIDER=mailjet`
+   Add `MAIL_FROM_EMAIL`, `MAIL_FROM_NAME`, `MJ_APIKEY_PUBLIC`, and `MJ_APIKEY_PRIVATE`
 
 5. Configure UPI and business details
    Confirm `UPI_ID`, `BUSINESS_PHONE`, and `BUSINESS_EMAIL`
@@ -44,12 +47,14 @@ Rahul Prints Deployment Checklist
    Push this project to GitHub
    Create a new Render Blueprint or Web Service from the repo
    If you use Blueprint sync, the included `render.yaml` is ready to use
-   Add all values from `.env` into Render environment variables before the first deploy
+   Render will prompt for the Mailjet values defined with `sync: false` in `render.yaml`
+   Add any remaining values from `.env` if you customize them beyond the defaults in `render.yaml`
    Keep the health check path as `/api/health`
 
 11. Important Render free-plan caveat
    Render free web services can sleep after inactivity
    Render free web services use ephemeral local storage, so `data/orders.json` is not reliable long-term on the free tier
+   Render free blocks outbound SMTP ports, so use Mailjet or another HTTPS email API instead of Gmail SMTP
    Use Oracle Cloud Always Free VM if you want the current local-file storage model to behave more like a traditional always-on server
 
 12. Production safety checks

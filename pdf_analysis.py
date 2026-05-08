@@ -1,17 +1,24 @@
-import io
 import json
 import sys
 
-import cv2
 import fitz
-import numpy as np
-from PIL import Image, ImageOps
 
 
 COLOR_DELTA = 12
 COLOR_RATIO_THRESHOLD = 0.04
 MIN_VISIBLE_PIXELS_FOR_EARLY_EXIT = 140
-BITONAL_THRESHOLD_BIAS = 10
+PDF_SAVE_OPTIONS = {
+    "garbage": 3,
+    "deflate": True,
+    "deflate_images": True,
+    "deflate_fonts": True,
+    "use_objstms": 1,
+}
+IMAGE_REWRITE_VARIANTS = [
+    {"dpi_threshold": 300, "dpi_target": 220, "quality": 92},
+    {"dpi_threshold": 240, "dpi_target": 180, "quality": 88},
+    {"dpi_threshold": 200, "dpi_target": 150, "quality": 84},
+]
 
 
 def page_has_color(page: fitz.Page) -> bool:
@@ -64,93 +71,73 @@ def analyze_pdf(pdf_path: str) -> dict:
         }
 
 
-def build_conversion_variants(page_count: int) -> list[int]:
-    if page_count <= 8:
-        return [420, 360, 300]
-    if page_count <= 20:
-        return [360, 300, 240]
-    if page_count <= 40:
-        return [300, 260, 220]
-    return [260, 220, 200]
+def recolor_document_to_grayscale(doc: fitz.Document) -> None:
+    if hasattr(doc, "recolor"):
+        doc.recolor(components=1)
+        return
+
+    for page in doc:
+        page.recolor(components=1)
 
 
-def create_bitonal_page_png(page: fitz.Page, dpi: int) -> bytes:
-    scale = dpi / 72
-    pix = page.get_pixmap(matrix=fitz.Matrix(scale, scale), alpha=False)
-    samples = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width, pix.n)
-
-    if pix.n >= 3:
-        gray = cv2.cvtColor(samples[:, :, :3], cv2.COLOR_RGB2GRAY)
-    else:
-        gray = samples[:, :, 0]
-
-    contrasted = ImageOps.autocontrast(Image.fromarray(gray, mode="L"), cutoff=1)
-    contrasted_array = np.array(contrasted)
-
-    threshold_value, _ = cv2.threshold(
-        contrasted_array,
-        0,
-        255,
-        cv2.THRESH_BINARY + cv2.THRESH_OTSU,
-    )
-    threshold_value = min(245, int(threshold_value) + BITONAL_THRESHOLD_BIAS)
-    bitonal_array = cv2.threshold(
-        contrasted_array,
-        threshold_value,
-        255,
-        cv2.THRESH_BINARY,
-    )[1]
-
-    image = Image.fromarray(bitonal_array, mode="L").convert("1")
-    buffer = io.BytesIO()
-    image.save(buffer, format="PNG", optimize=True, compress_level=9)
-    return buffer.getvalue()
+def write_pdf_bytes(doc: fitz.Document) -> bytes:
+    return doc.write(**PDF_SAVE_OPTIONS)
 
 
-def create_bw_pdf_bytes(input_path: str, dpi: int) -> bytes:
+def create_bw_pdf_bytes(input_path: str, rewrite_profile: dict | None = None) -> bytes:
     with fitz.open(input_path) as source_doc:
-        with fitz.open() as converted_doc:
-            for source_page in source_doc:
-                page_rect = source_page.rect
-                page_png = create_bitonal_page_png(source_page, dpi)
-                target_page = converted_doc.new_page(width=page_rect.width, height=page_rect.height)
-                target_page.insert_image(target_page.rect, stream=page_png, keep_proportion=False)
-
-            return converted_doc.write(
-                garbage=3,
-                deflate=True,
-                deflate_images=True,
-                deflate_fonts=True,
-                use_objstms=1,
+        recolor_document_to_grayscale(source_doc)
+        if rewrite_profile:
+            source_doc.rewrite_images(
+                dpi_threshold=rewrite_profile["dpi_threshold"],
+                dpi_target=rewrite_profile["dpi_target"],
+                quality=rewrite_profile["quality"],
+                lossy=True,
+                lossless=True,
+                bitonal=True,
+                color=True,
+                gray=True,
             )
+        return write_pdf_bytes(source_doc)
 
 
 def convert_pdf_to_bw(input_path: str, output_path: str, max_bytes: int = 0) -> dict:
     with fitz.open(input_path) as source_doc:
-        variants = build_conversion_variants(source_doc.page_count)
-        best_pdf_bytes = b""
-        selected_dpi = variants[-1]
+        best_pdf_bytes = create_bw_pdf_bytes(input_path)
+        conversion_mode = "grayscale-recolor"
+        selected_profile = None
 
-        for dpi in variants:
-            candidate_pdf_bytes = create_bw_pdf_bytes(input_path, dpi)
+        if max_bytes and len(best_pdf_bytes) > max_bytes:
+            for profile in IMAGE_REWRITE_VARIANTS:
+                candidate_pdf_bytes = create_bw_pdf_bytes(input_path, profile)
 
-            if not best_pdf_bytes or len(candidate_pdf_bytes) < len(best_pdf_bytes):
-                best_pdf_bytes = candidate_pdf_bytes
-                selected_dpi = dpi
+                if len(candidate_pdf_bytes) < len(best_pdf_bytes):
+                    best_pdf_bytes = candidate_pdf_bytes
+                    conversion_mode = "grayscale-recolor-image-rewrite"
+                    selected_profile = profile
 
-            if not max_bytes or len(candidate_pdf_bytes) <= max_bytes:
-                best_pdf_bytes = candidate_pdf_bytes
-                selected_dpi = dpi
-                break
+                if len(candidate_pdf_bytes) <= max_bytes:
+                    best_pdf_bytes = candidate_pdf_bytes
+                    conversion_mode = "grayscale-recolor-image-rewrite"
+                    selected_profile = profile
+                    break
+
+        if max_bytes and len(best_pdf_bytes) > max_bytes:
+            raise ValueError(
+                "Black-and-white conversion could not stay within the email size limit while preserving the original layout quality."
+            )
 
         with open(output_path, "wb") as target:
             target.write(best_pdf_bytes)
 
-        return {
+        result = {
             "size": len(best_pdf_bytes),
             "pageCount": source_doc.page_count,
-            "renderDpi": selected_dpi,
+            "conversionMode": conversion_mode,
         }
+        if selected_profile:
+            result["imageRewrite"] = selected_profile
+        return result
 
 
 def main() -> int:
