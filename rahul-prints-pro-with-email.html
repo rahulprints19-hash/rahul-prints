@@ -7,7 +7,7 @@
   <title>Rahul Prints | Professional Print Orders</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=Outfit:wght@500;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Sora:wght@600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
   <link rel="stylesheet" href="/styles.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" defer></script>
@@ -21,9 +21,10 @@
     <div class="container header-shell">
       <a href="#home" class="brand">
         <span class="brand-mark"><i class="fas fa-print"></i></span>
-        <span>
+        <span class="brand-copy">
           <strong>Rahul Prints</strong>
           <small>Fast print orders in Puducherry</small>
+          <em class="brand-status">UPI, invoice, and file-forwarding workflow live</em>
         </span>
       </a>
       <div class="header-actions">
@@ -61,6 +62,20 @@
             <span><i class="fas fa-circle-check"></i> Visible payment timer</span>
             <span><i class="fas fa-circle-check"></i> PDF invoice by email</span>
           </div>
+          <div class="hero-stats">
+            <article class="hero-stat-card">
+              <strong>Transparent totals</strong>
+              <span>Customers see the exact B/W, color, copies, and total before they pay.</span>
+            </article>
+            <article class="hero-stat-card">
+              <strong>Counter-ready flow</strong>
+              <span>No manual price calculation, no chasing files, and no unclear payment notes.</span>
+            </article>
+            <article class="hero-stat-card">
+              <strong>Owner delivery built in</strong>
+              <span>The original customer file and generated invoice can reach the print desk automatically.</span>
+            </article>
+          </div>
         </div>
         <div class="hero-panel">
           <div class="hero-card hero-preview-card">
@@ -70,6 +85,11 @@
                 <h2>Designed for fast walk-in printing</h2>
               </div>
               <span class="hero-badge">Live invoice flow</span>
+            </div>
+            <div class="hero-status-strip">
+              <span><i class="fas fa-bolt"></i> Faster than manual desk entry</span>
+              <span><i class="fas fa-receipt"></i> Payment proof captured</span>
+              <span><i class="fas fa-envelope"></i> Customer + owner email flow</span>
             </div>
             <div class="hero-flow-list">
               <article class="hero-flow-item">
@@ -140,12 +160,58 @@
       </div>
     </section>
 
+    <section class="section studio-proof">
+      <div class="container">
+        <div class="proof-shell">
+          <div class="section-heading proof-heading">
+            <span class="eyebrow">Why It Feels Professional</span>
+            <h2>Built like a real print desk system, not just a file upload page</h2>
+            <p class="section-copy">The visual upgrade keeps the same working order flow, but presents it with the clarity and confidence of a production storefront.</p>
+          </div>
+          <div class="proof-grid">
+            <article class="proof-card">
+              <span class="proof-index">01</span>
+              <h3>Clear before payment</h3>
+              <p>Customers can see analysis, copy count, price per copy, and total before opening any UPI app.</p>
+            </article>
+            <article class="proof-card">
+              <span class="proof-index">02</span>
+              <h3>Guided payment step</h3>
+              <p>The QR, timer, transaction ID, and payer UPI collection happen in one organized workflow.</p>
+            </article>
+            <article class="proof-card">
+              <span class="proof-index">03</span>
+              <h3>Immediate paperwork</h3>
+              <p>Receipt PDFs and email updates make the order feel dependable instead of manually handled.</p>
+            </article>
+            <article class="proof-card">
+              <span class="proof-index">04</span>
+              <h3>Ready for future growth</h3>
+              <p>The interface can keep expanding without needing to rewrite the payment and order logic underneath.</p>
+            </article>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <section id="order" class="section">
       <div class="container">
         <div class="section-heading">
           <span class="eyebrow">Order Desk</span>
           <h2>Submit your print request</h2>
           <p class="section-copy">Review the job, complete payment inside the timer, then confirm with the UPI transaction reference.</p>
+        </div>
+
+        <div class="order-brief">
+          <div class="order-brief-copy">
+            <strong>Designed to look polished while keeping the same working backend flow.</strong>
+            <p>The upload, pricing, UPI, invoice, and owner-delivery process stays exactly connected to the logic you already deployed.</p>
+          </div>
+          <div class="order-brief-tags">
+            <span><i class="fas fa-check-circle"></i> Exact PDF analysis</span>
+            <span><i class="fas fa-check-circle"></i> Guided UPI confirmation</span>
+            <span><i class="fas fa-check-circle"></i> Invoice-ready receipt</span>
+          </div>
         </div>
 
         <div class="journey-strip">
@@ -531,6 +597,11 @@
       <p>Professional printing with faster digital order handling.</p>
     </div>
   </footer>
+
+  <a href="#order" class="mobile-order-bar">
+    <i class="fas fa-bolt"></i>
+    <span>Start Print Order</span>
+  </a>
 
   <div id="toast" class="toast" aria-live="polite"></div>
 </body>
