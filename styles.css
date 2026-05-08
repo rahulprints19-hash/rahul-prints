@@ -86,7 +86,8 @@ button {
 #home,
 #services,
 #order,
-#contact {
+#contact,
+#uploadForm {
   scroll-margin-top: 110px;
 }
 
@@ -1179,6 +1180,10 @@ button {
   color: var(--primary);
 }
 
+.scroll-target-glow {
+  animation: target-glow 1.15s ease;
+}
+
 .print-mode-card {
   display: flex;
   align-items: center;
@@ -1892,6 +1897,29 @@ button {
   line-height: 1.7;
 }
 
+.receipt-alert {
+  margin-bottom: 18px;
+  padding: 16px 18px;
+  border-radius: 18px;
+  border: 1px solid rgba(216, 122, 18, 0.18);
+  background: linear-gradient(180deg, rgba(255, 248, 238, 0.98), rgba(255, 252, 247, 0.96));
+  color: #7c5410;
+}
+
+.receipt-alert strong {
+  display: block;
+  margin-bottom: 10px;
+}
+
+.receipt-alert-list {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.receipt-alert-list li + li {
+  margin-top: 6px;
+}
+
 .receipt-verification {
   margin-top: 20px;
   padding-top: 18px;
@@ -2017,6 +2045,23 @@ body.has-active-payment-session .mobile-order-bar {
 
   to {
     opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes target-glow {
+  0% {
+    box-shadow: 0 0 0 0 rgba(27, 102, 255, 0);
+    transform: translateY(0);
+  }
+
+  30% {
+    box-shadow: 0 0 0 8px rgba(27, 102, 255, 0.1);
+    transform: translateY(-2px);
+  }
+
+  100% {
+    box-shadow: 0 0 0 0 rgba(27, 102, 255, 0);
     transform: translateY(0);
   }
 }

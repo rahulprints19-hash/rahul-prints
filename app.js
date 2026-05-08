@@ -1,8 +1,9 @@
 const APP_CONFIG = window.APP_CONFIG || {
   businessName: "Rahul Prints",
-  businessEmail: "rahulprints19@gmail.com",
+  businessEmail: "owner@example.com",
   businessPhone: "+919345574203",
   upiId: "rahulsiva190@okicici",
+  upiMerchantCode: "",
   maxForwardablePdfMb: 18,
   pricing: { bw: 1, color: 10 },
   paymentTimeoutMinutes: 5,
@@ -25,6 +26,8 @@ const state = {
   analysisProgress: null,
   analysisRunId: 0,
   upiFallbackTimerId: null,
+  scrollAnimationFrameId: null,
+  scrollTargetTimerId: null,
 };
 
 const elements = {};
@@ -121,6 +124,7 @@ function wireElements() {
 
   elements.methodTabs = Array.from(document.querySelectorAll(".method-tab"));
   elements.paymentProgressItems = Array.from(document.querySelectorAll("[data-payment-step]"));
+  elements.quickScrollLinks = Array.from(document.querySelectorAll("[data-scroll-target]"));
 }
 
 function applyPublicConfig() {
@@ -164,6 +168,7 @@ function bindEvents() {
   elements.confirmCodButton.addEventListener("click", confirmCodOrder);
   elements.downloadInvoiceButton.addEventListener("click", downloadInvoice);
   elements.newOrderButton.addEventListener("click", startFreshOrder);
+  elements.quickScrollLinks.forEach((link) => link.addEventListener("click", handleQuickScrollLink));
   elements.methodTabs.forEach((button) =>
     button.addEventListener("click", () => setPaymentMethod(button.dataset.method))
   );
@@ -696,7 +701,7 @@ function renderPaymentSession({ restartTimer, resetConfirmationFields, keepScrol
   }
 
   if (!keepScroll) {
-    scrollToElementWithHeaderOffset(elements.paymentSection);
+    scrollToElementWithHeaderOffset(elements.paymentSection, { duration: 420 });
   }
 }
 
@@ -710,15 +715,88 @@ function getStickyHeaderOffset() {
   return headerHeight + 18;
 }
 
-function scrollToElementWithHeaderOffset(element) {
+function scrollToElementWithHeaderOffset(element, options = {}) {
   if (!element) {
     return;
   }
 
-  const top = Math.max(0, window.scrollY + element.getBoundingClientRect().top - getStickyHeaderOffset());
-  window.scrollTo({
-    top,
-    behavior: "smooth",
+  const top = Math.max(
+    0,
+    window.scrollY + element.getBoundingClientRect().top - getStickyHeaderOffset() - Number(options.extraOffset || 0)
+  );
+  const duration = Math.max(0, Number(options.duration || 460));
+  const prefersReducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+  const focusTarget = options.focusTarget || null;
+
+  highlightScrollTarget(element);
+
+  if (prefersReducedMotion || duration < 80 || typeof window.requestAnimationFrame !== "function") {
+    window.scrollTo(0, top);
+    if (focusTarget) {
+      focusTarget.focus({ preventScroll: true });
+    }
+    return;
+  }
+
+  const startY = window.scrollY;
+  const delta = top - startY;
+  if (Math.abs(delta) < 2) {
+    if (focusTarget) {
+      focusTarget.focus({ preventScroll: true });
+    }
+    return;
+  }
+
+  window.cancelAnimationFrame(state.scrollAnimationFrameId);
+  const startTime = performance.now();
+
+  const step = (currentTime) => {
+    const progress = Math.min(1, (currentTime - startTime) / duration);
+    const eased = 1 - Math.pow(1 - progress, 3);
+    window.scrollTo(0, Math.round(startY + delta * eased));
+
+    if (progress < 1) {
+      state.scrollAnimationFrameId = window.requestAnimationFrame(step);
+      return;
+    }
+
+    state.scrollAnimationFrameId = null;
+    if (focusTarget) {
+      focusTarget.focus({ preventScroll: true });
+    }
+  };
+
+  state.scrollAnimationFrameId = window.requestAnimationFrame(step);
+}
+
+function highlightScrollTarget(element) {
+  if (!element) {
+    return;
+  }
+
+  element.classList.remove("scroll-target-glow");
+  window.clearTimeout(state.scrollTargetTimerId);
+  window.requestAnimationFrame(() => {
+    element.classList.add("scroll-target-glow");
+  });
+  state.scrollTargetTimerId = window.setTimeout(() => {
+    element.classList.remove("scroll-target-glow");
+  }, 1300);
+}
+
+function handleQuickScrollLink(event) {
+  const link = event.currentTarget;
+  const targetId = link?.dataset?.scrollTarget;
+  const target = targetId ? document.getElementById(targetId) : null;
+
+  if (!target) {
+    return;
+  }
+
+  event.preventDefault();
+  history.replaceState(null, "", `#${targetId}`);
+  scrollToElementWithHeaderOffset(target, {
+    duration: 380,
   });
 }
 
@@ -746,18 +824,37 @@ function buildUpiParams() {
     return new URLSearchParams();
   }
 
-  return new URLSearchParams({
+  const params = {
     pa: APP_CONFIG.upiId,
     pn: APP_CONFIG.businessName,
     am: state.currentOrder.amount.toFixed(2),
     cu: "INR",
     tn: `Print Order ${state.currentOrder.orderId}`,
     tr: state.currentOrder.orderId,
-  });
+    url: buildOrderReferenceUrl(),
+  };
+
+  if (APP_CONFIG.upiMerchantCode) {
+    params.mc = APP_CONFIG.upiMerchantCode;
+  }
+
+  return new URLSearchParams(params);
 }
 
 function buildUpiUri({ scheme = "upi", path = "pay" } = {}) {
   return `${scheme}://${path}?${buildUpiParams().toString()}`;
+}
+
+function buildOrderReferenceUrl() {
+  if (!state.currentOrder) {
+    return window.location.href;
+  }
+
+  try {
+    return new URL(`/#order-${state.currentOrder.orderId}`, window.location.origin).toString();
+  } catch {
+    return window.location.href;
+  }
 }
 
 function buildAndroidUpiIntent(packageName) {
@@ -778,6 +875,13 @@ function buildPreferredUpiLaunchLink(appKey) {
   const appConfig = UPI_APP_CONFIG[appKey];
   if (!appConfig) {
     return buildUpiLink();
+  }
+
+  if (appKey === "gpay") {
+    return buildUpiUri({
+      scheme: "gpay",
+      path: "upi/pay",
+    });
   }
 
   if (isAndroidDevice()) {
@@ -944,7 +1048,7 @@ function launchNamedUpiApp(appKey) {
   elements.paymentApp.value = appConfig.label;
   state.currentOrder.payment.upiLink = buildUpiLink();
   showPaymentFeedback(
-    `${isIosDevice() ? `Opening ${appConfig.label} on iPhone. After payment, switch back to Safari and submit the transaction ID and your UPI ID.` : `Opening ${appConfig.label}. Complete the payment there, then return here and submit the transaction ID and your UPI ID.`}`,
+    `${isIosDevice() ? `Opening ${appConfig.label} on iPhone. After payment, switch back to Safari and submit the transaction ID and your UPI ID.` : `Opening ${appConfig.label}. Complete the payment there, then return here and submit the transaction ID and your UPI ID.`} If the app shows a payment error, use the QR code or the main UPI button and then continue below with the same order amount.`,
     "info"
   );
   openUpiLink(buildPreferredUpiLaunchLink(appKey), state.currentOrder.payment.upiLink);
@@ -1086,16 +1190,21 @@ function handleSuccessfulConfirmation(result) {
   const receipt = result.receipt || {};
   const isCod = receipt.paymentMethod === "Cash on Pickup";
   const isBwOnly = receipt.printMode === "bw-only";
+  const hasDeliveryWarnings = Array.isArray(result.warnings) && result.warnings.length > 0;
   elements.successTitle.textContent = isCod
     ? "Order Confirmed for Pickup."
-    : "Payment Completed Successfully.";
+    : hasDeliveryWarnings
+      ? "Payment Recorded Successfully."
+      : "Payment Completed Successfully.";
   elements.successLead.textContent = isCod
     ? isBwOnly
       ? "Your pickup order is locked in, the receipt is ready, and the print desk has the black-and-white file instructions."
       : "Your pickup order is locked in, the receipt is ready, and the print desk has the customer PDF."
-    : isBwOnly
-      ? "Your payment is verified, the B/W print-ready file is ready, and the receipt will download automatically."
-      : "Your payment is verified, the receipt is ready, and the print desk has received the customer PDF.";
+    : hasDeliveryWarnings
+      ? "Your receipt is ready. Automatic owner/customer delivery needs a retry, but the order has been safely recorded on the server."
+      : isBwOnly
+        ? "Your payment is verified, the B/W print-ready file is ready, and the receipt will download automatically."
+        : "Your payment is verified, the receipt is ready, and the print desk has received the customer PDF.";
 
   const bytes = Uint8Array.from(atob(result.invoiceBase64), (char) => char.charCodeAt(0));
   state.invoiceBlob = new Blob([bytes], { type: "application/pdf" });
@@ -1105,7 +1214,7 @@ function handleSuccessfulConfirmation(result) {
   renderDeliveryStatus(result);
   history.replaceState(null, "", "#paymentSuccess");
   window.requestAnimationFrame(() => {
-    elements.paymentSuccess.scrollIntoView({ behavior: "smooth", block: "start" });
+    scrollToElementWithHeaderOffset(elements.paymentSuccess, { duration: 420, extraOffset: 8 });
     elements.paymentSuccess.focus({ preventScroll: true });
   });
   downloadInvoice();
@@ -1117,6 +1226,16 @@ function renderDeliveryStatus(result) {
   const verificationItems = (result.verification?.checks || [])
     .map((item) => `<li>${escapeHtml(item)}</li>`)
     .join("");
+  const warnings = Array.isArray(result.warnings) && result.warnings.length > 0
+    ? `
+      <div class="receipt-alert">
+        <strong>Attention needed:</strong>
+        <ul class="receipt-alert-list">
+          ${result.warnings.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
+        </ul>
+      </div>
+    `
+    : "";
 
   elements.deliveryStatus.innerHTML = `
     <div class="receipt-overview">
@@ -1136,6 +1255,8 @@ function renderDeliveryStatus(result) {
         <small>${escapeHtml(receipt.paymentMethod || "UPI")}</small>
       </article>
     </div>
+
+    ${warnings}
 
     <section class="receipt-section">
       <div class="receipt-section-head">
@@ -1168,13 +1289,19 @@ function renderDeliveryStatus(result) {
       </div>
       <div class="receipt-notifications">
         <div class="receipt-note">
-          <strong>Customer invoice:</strong> Sent to ${escapeHtml(result.emails?.customer || receipt.customerEmail || "NA")}
+          <strong>Customer invoice:</strong> ${escapeHtml(
+            result.emails?.deliveryFailed
+              ? `Pending automatic delivery to ${result.emails?.customer || receipt.customerEmail || "the customer inbox"}`
+              : `Sent to ${result.emails?.customer || receipt.customerEmail || "NA"}`
+          )}
         </div>
         <div class="receipt-note">
           <strong>Owner print file:</strong> ${escapeHtml(
             result.attachments?.originalPdfForwardedToOwner
               ? `${result.attachments.originalPdfFileName} forwarded to ${receipt.ownerEmail || result.emails?.owner || "print desk email"}`
-              : "Forwarding status unavailable"
+              : result.attachments?.originalPdfStoredOnServer
+                ? `${result.attachments?.originalPdfFileName || "Customer PDF"} saved on the server for manual follow-up`
+                : "Forwarding status unavailable"
           )}
         </div>
         <div class="receipt-note">
@@ -1761,8 +1888,10 @@ function startFreshOrder() {
   clearCompletedOrderArtifacts();
   resetPendingPaymentSession();
   refreshPricingPreview();
-  history.replaceState(null, "", "#order");
-  elements.uploadForm.scrollIntoView({ behavior: "smooth", block: "start" });
+  history.replaceState(null, "", "#uploadForm");
+  scrollToElementWithHeaderOffset(elements.uploadForm, {
+    duration: 360,
+  });
 }
 
 function showToast(message, isError = false) {

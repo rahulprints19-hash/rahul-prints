@@ -22,6 +22,7 @@ const ROOT = __dirname;
 const DATA_DIR = path.join(ROOT, "data");
 const ORDERS_FILE = path.join(DATA_DIR, "orders.json");
 const TEMP_UPLOAD_DIR = path.join(DATA_DIR, "tmp");
+const ORDER_ARTIFACTS_DIR = path.join(DATA_DIR, "artifacts");
 const PDF_ANALYSIS_SCRIPT = path.join(ROOT, "pdf_analysis.py");
 const PYTHON_EXECUTABLE = sanitizePythonExecutable(process.env.PYTHON_EXECUTABLE);
 const PYTHON_EXECUTABLE_ARGS = process.env.PYTHON_EXECUTABLE
@@ -35,14 +36,19 @@ const MAX_PORT_FALLBACK_ATTEMPTS = 10;
 const PDF_ANALYSIS_TIMEOUT_MS = Number(process.env.PDF_ANALYSIS_TIMEOUT_MS || 45000);
 const PDF_CONVERSION_TIMEOUT_MS = Number(process.env.PDF_CONVERSION_TIMEOUT_MS || 180000);
 const BUSINESS_NAME = process.env.BUSINESS_NAME || "Rahul Prints";
-const BUSINESS_EMAIL = process.env.BUSINESS_EMAIL || "rahulprints19@gmail.com";
+const BUSINESS_EMAIL = sanitizeText(process.env.BUSINESS_EMAIL) || sanitizeText(process.env.SMTP_USER) || "owner@example.com";
 const ORDER_NOTIFICATION_EMAIL = process.env.ORDER_NOTIFICATION_EMAIL || BUSINESS_EMAIL;
 const BUSINESS_PHONE = process.env.BUSINESS_PHONE || "+919345574203";
 const UPI_ID = process.env.UPI_ID || "rahulsiva190@okicici";
+const UPI_MERCHANT_CODE = sanitizeText(process.env.UPI_MERCHANT_CODE);
 const PRICE_BW = Number(process.env.PRICE_BW || 1);
 const PRICE_COLOR = Number(process.env.PRICE_COLOR || 10);
 const PAYMENT_TIMEOUT_MINUTES = Number(process.env.PAYMENT_TIMEOUT_MINUTES || 5);
 const MAIL_PROVIDER = resolveMailProvider();
+const SMTP_SERVICE = sanitizeText(process.env.SMTP_SERVICE);
+const SMTP_HOST = sanitizeText(process.env.SMTP_HOST);
+const SMTP_PORT = resolveSmtpPort();
+const SMTP_SECURE = resolveOptionalBoolean(process.env.SMTP_SECURE);
 const MAX_FORWARDABLE_PDF_MB = resolveMaxForwardablePdfMb(MAIL_PROVIDER);
 const MAX_REQUEST_BODY_BYTES = Number(
   process.env.MAX_REQUEST_BODY_BYTES ||
@@ -71,15 +77,10 @@ const CONTENT_TYPES = {
 };
 
 let transporter = null;
+const smtpTransportOptions = buildSmtpTransportOptions();
 
-if (MAIL_PROVIDER === "smtp" && process.env.SMTP_USER && process.env.SMTP_PASS) {
-  transporter = nodemailer.createTransport({
-    service: "gmail",
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
-    },
-  });
+if (MAIL_PROVIDER === "smtp" && smtpTransportOptions) {
+  transporter = nodemailer.createTransport(smtpTransportOptions);
 
   transporter.verify().then(
     () => {
@@ -90,7 +91,9 @@ if (MAIL_PROVIDER === "smtp" && process.env.SMTP_USER && process.env.SMTP_PASS) 
     }
   );
 } else if (MAIL_PROVIDER === "smtp") {
-  console.warn("SMTP credentials are missing. Email sending will fail until .env is configured.");
+  console.warn(
+    "SMTP credentials are missing. Set SMTP_USER and SMTP_PASS, then optionally add SMTP_SERVICE or SMTP_HOST/SMTP_PORT/SMTP_SECURE."
+  );
 } else if (MAIL_PROVIDER === "mailjet") {
   if (!MJ_APIKEY_PUBLIC || !MJ_APIKEY_PRIVATE) {
     console.warn("Mailjet API credentials are missing. Email sending will fail until .env is configured.");
@@ -243,6 +246,59 @@ function resolveMailProvider() {
   }
 
   return "";
+}
+
+function resolveOptionalBoolean(value) {
+  const normalized = sanitizeText(value).toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+
+  if (["true", "1", "yes", "on"].includes(normalized)) {
+    return true;
+  }
+
+  if (["false", "0", "no", "off"].includes(normalized)) {
+    return false;
+  }
+
+  return null;
+}
+
+function resolveSmtpPort() {
+  const parsed = Number(process.env.SMTP_PORT);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function buildSmtpTransportOptions() {
+  const user = sanitizeText(process.env.SMTP_USER);
+  const pass = sanitizeText(process.env.SMTP_PASS);
+
+  if (!user || !pass) {
+    return null;
+  }
+
+  if (SMTP_HOST) {
+    const secure = SMTP_SECURE ?? SMTP_PORT === 465;
+    return {
+      host: SMTP_HOST,
+      port: SMTP_PORT || (secure ? 465 : 587),
+      secure,
+      auth: { user, pass },
+    };
+  }
+
+  if (SMTP_SERVICE) {
+    return {
+      service: SMTP_SERVICE,
+      auth: { user, pass },
+    };
+  }
+
+  return {
+    service: "gmail",
+    auth: { user, pass },
+  };
 }
 
 function resolveMaxForwardablePdfMb(mailProvider) {
@@ -495,6 +551,10 @@ async function saveStoredOrder(orderRecord) {
   const orders = await loadStoredOrders();
   orders.push(orderRecord);
   await fs.promises.writeFile(ORDERS_FILE, JSON.stringify(orders, null, 2), "utf8");
+}
+
+function sanitizeOrderDirectoryName(value) {
+  return sanitizeText(value, "order").replace(/[^a-z0-9_-]+/gi, "-");
 }
 
 function calculatePricing(document) {
@@ -1171,7 +1231,62 @@ async function sendOrderEmails(order, invoiceBuffer, uploadedPdf, verificationCh
   };
 }
 
-async function saveConfirmedOrder(order, uploadedPdf, verificationChecks, emails) {
+async function persistOrderArtifacts(order, uploadedPdf, invoiceBuffer) {
+  const orderDir = path.join(ORDER_ARTIFACTS_DIR, sanitizeOrderDirectoryName(order.orderId));
+
+  await fs.promises.mkdir(orderDir, { recursive: true });
+  await fs.promises.writeFile(path.join(orderDir, "customer-upload.pdf"), uploadedPdf.buffer);
+  await fs.promises.writeFile(path.join(orderDir, "invoice.pdf"), invoiceBuffer);
+  await fs.promises.writeFile(
+    path.join(orderDir, "summary.json"),
+    JSON.stringify(
+      {
+        orderId: order.orderId,
+        savedAt: new Date().toISOString(),
+        uploadedPdfFileName: uploadedPdf.fileName,
+        invoiceFileName: `${order.orderId}.pdf`,
+      },
+      null,
+      2
+    ),
+    "utf8"
+  );
+
+  return {
+    storedLocally: true,
+    orderDirectory: path.relative(ROOT, orderDir),
+    uploadedPdfPath: path.relative(ROOT, path.join(orderDir, "customer-upload.pdf")),
+    invoicePath: path.relative(ROOT, path.join(orderDir, "invoice.pdf")),
+  };
+}
+
+async function deliverOrderNotifications(order, invoiceBuffer, uploadedPdf, verificationChecks) {
+  try {
+    const emails = await sendOrderEmails(order, invoiceBuffer, uploadedPdf, verificationChecks);
+    return {
+      emails,
+      warnings: [],
+      notificationError: "",
+    };
+  } catch (error) {
+    console.warn(`Order ${order.orderId} email delivery failed:`, error.message);
+    return {
+      emails: {
+        customer: order.customer.email,
+        owner: ORDER_NOTIFICATION_EMAIL,
+        originalPdfForwardedToOwner: false,
+        originalPdfFileName: uploadedPdf.fileName,
+        deliveryFailed: true,
+      },
+      warnings: [
+        "Automatic email delivery is pending. The payment receipt is ready, and Rahul Prints can recover this order from the server for manual follow-up.",
+      ],
+      notificationError: error.message || "Email delivery failed.",
+    };
+  }
+}
+
+async function saveConfirmedOrder(order, uploadedPdf, verificationChecks, outcome) {
   const record = {
     ...order,
     uploadedPdf: {
@@ -1182,9 +1297,15 @@ async function saveConfirmedOrder(order, uploadedPdf, verificationChecks, emails
     savedAt: new Date().toISOString(),
     verificationChecks,
     notifications: {
-      emails,
+      emails: outcome.emails,
+      warnings: outcome.warnings || [],
+      error: outcome.notificationError || "",
     },
   };
+
+  if (outcome.artifacts) {
+    record.artifacts = outcome.artifacts;
+  }
 
   await saveStoredOrder(record);
 }
@@ -1200,9 +1321,37 @@ async function handleOrderConfirmation(response, payload) {
 
     const verificationChecks = buildVerificationChecks(order);
     const invoiceBuffer = await generateInvoicePdf(order, verificationChecks);
-    const emails = await sendOrderEmails(order, invoiceBuffer, uploadedPdf, verificationChecks);
+    let artifacts = null;
+    try {
+      artifacts = await persistOrderArtifacts(order, uploadedPdf, invoiceBuffer);
+    } catch (error) {
+      console.warn(`Order ${order.orderId} local artifact persistence failed:`, error.message);
+    }
 
-    await saveConfirmedOrder(order, uploadedPdf, verificationChecks, emails);
+    const notificationOutcome = await deliverOrderNotifications(order, invoiceBuffer, uploadedPdf, verificationChecks);
+
+    if (!artifacts && notificationOutcome.notificationError) {
+      const fatalError = new Error(
+        "The order could not be secured after payment. Please contact Rahul Prints immediately before retrying."
+      );
+      fatalError.statusCode = 500;
+      throw fatalError;
+    }
+
+    const outcome = {
+      ...notificationOutcome,
+      artifacts,
+    };
+
+    try {
+      await saveConfirmedOrder(order, uploadedPdf, verificationChecks, outcome);
+    } catch (error) {
+      console.warn(`Order ${order.orderId} store write failed:`, error.message);
+      outcome.warnings = [
+        ...(outcome.warnings || []),
+        "Order history storage is pending, but the payment receipt is already ready for download.",
+      ];
+    }
 
     sendJson(response, 200, {
       success: true,
@@ -1210,7 +1359,8 @@ async function handleOrderConfirmation(response, payload) {
       amount: order.amount,
       invoiceFileName: `${order.orderId}.pdf`,
       invoiceBase64: invoiceBuffer.toString("base64"),
-      emails,
+      emails: outcome.emails,
+      warnings: outcome.warnings || [],
       verification: {
         transactionId: order.payment.transactionId,
         payerUpiId: order.payment.payerUpiId,
@@ -1219,7 +1369,8 @@ async function handleOrderConfirmation(response, payload) {
       attachments: {
         invoicePdf: `${order.orderId}.pdf`,
         originalPdfFileName: uploadedPdf.fileName,
-        originalPdfForwardedToOwner: true,
+        originalPdfForwardedToOwner: Boolean(outcome.emails?.originalPdfForwardedToOwner),
+        originalPdfStoredOnServer: Boolean(artifacts?.storedLocally),
       },
       receipt: {
         businessName: BUSINESS_NAME,
@@ -1241,7 +1392,9 @@ async function handleOrderConfirmation(response, payload) {
         documentName: order.document.fileName,
         ownerEmail: ORDER_NOTIFICATION_EMAIL,
       },
-      message: "Payment completed and invoice generated.",
+      message: notificationOutcome.notificationError
+        ? "Payment recorded and invoice generated. Automatic email delivery is pending."
+        : "Payment completed and invoice generated.",
     });
   } catch (error) {
     sendJson(response, error.statusCode || 500, {
@@ -1278,6 +1431,7 @@ function buildPublicConfig() {
     businessEmail: BUSINESS_EMAIL,
     businessPhone: BUSINESS_PHONE,
     upiId: UPI_ID,
+    upiMerchantCode: UPI_MERCHANT_CODE,
     maxForwardablePdfMb: MAX_FORWARDABLE_PDF_MB,
     pricing: {
       bw: PRICE_BW,
