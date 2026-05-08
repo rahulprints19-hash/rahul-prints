@@ -366,9 +366,17 @@
               </div>
 
               <div class="field-grid">
-                <label class="field">
+                <label class="field field-copies">
                   <span>Copies</span>
-                  <input type="number" id="copies" min="1" max="100" value="1" required>
+                  <div class="number-stepper">
+                    <button type="button" id="copiesDecreaseButton" class="stepper-button" aria-label="Decrease copies">
+                      <i class="fas fa-minus" aria-hidden="true"></i>
+                    </button>
+                    <input type="number" id="copies" min="1" max="100" value="1" inputmode="numeric" required>
+                    <button type="button" id="copiesIncreaseButton" class="stepper-button" aria-label="Increase copies">
+                      <i class="fas fa-plus" aria-hidden="true"></i>
+                    </button>
+                  </div>
                 </label>
                 <label class="field">
                   <span>Paper Size</span>

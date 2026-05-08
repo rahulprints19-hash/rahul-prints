@@ -59,6 +59,8 @@ function wireElements() {
     "grandTotalLine",
     "uploadForm",
     "copies",
+    "copiesDecreaseButton",
+    "copiesIncreaseButton",
     "paperSize",
     "name",
     "phone",
@@ -130,6 +132,9 @@ function bindEvents() {
   elements.fileInput.addEventListener("change", handleFileSelection);
   elements.bwModeToggle.addEventListener("change", handleBlackWhiteModeChange);
   elements.copies.addEventListener("input", handleCopiesChange);
+  elements.copies.addEventListener("change", handleCopiesChange);
+  elements.copiesDecreaseButton.addEventListener("click", () => adjustCopies(-1));
+  elements.copiesIncreaseButton.addEventListener("click", () => adjustCopies(1));
   elements.uploadForm.addEventListener("submit", handleOrderReview);
   elements.paymentConfirmationForm.addEventListener("submit", confirmUpiPayment);
   elements.paymentApp.addEventListener("change", showDefaultPaymentFeedback);
@@ -280,6 +285,12 @@ function handleBlackWhiteModeChange() {
       showToast(error.message, true);
     }
   }
+}
+
+function adjustCopies(delta) {
+  const nextValue = Math.max(1, Math.min(100, getCopiesValue() + Number(delta || 0)));
+  elements.copies.value = String(nextValue);
+  elements.copies.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
 function handleCopiesChange() {
