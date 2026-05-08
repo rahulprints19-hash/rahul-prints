@@ -24,9 +24,24 @@ const state = {
   isAnalyzingPdf: false,
   analysisProgress: null,
   analysisRunId: 0,
+  upiFallbackTimerId: null,
 };
 
 const elements = {};
+const UPI_APP_CONFIG = {
+  gpay: {
+    label: "Google Pay",
+    androidPackage: "com.google.android.apps.nbu.paisa.user",
+    iosScheme: "tez",
+    iosPath: "upi/pay",
+  },
+  phonepe: {
+    label: "PhonePe",
+    androidPackage: "com.phonepe.app",
+    iosScheme: "phonepe",
+    iosPath: "pay",
+  },
+};
 
 document.addEventListener("DOMContentLoaded", () => {
   wireElements();
@@ -74,6 +89,8 @@ function wireElements() {
     "timerChip",
     "qrCode",
     "upiIdText",
+    "gpayLaunchButton",
+    "phonePeLaunchButton",
     "upiLaunchButton",
     "copyUpiButton",
     "paymentConfirmationForm",
@@ -140,6 +157,8 @@ function bindEvents() {
   elements.paymentApp.addEventListener("change", showDefaultPaymentFeedback);
   elements.transactionId.addEventListener("input", handleTransactionIdInput);
   elements.payerUpiId.addEventListener("input", handlePayerUpiIdInput);
+  elements.gpayLaunchButton.addEventListener("click", () => launchNamedUpiApp("gpay"));
+  elements.phonePeLaunchButton.addEventListener("click", () => launchNamedUpiApp("phonepe"));
   elements.upiLaunchButton.addEventListener("click", launchUpiApp);
   elements.copyUpiButton.addEventListener("click", copyUpiId);
   elements.confirmCodButton.addEventListener("click", confirmCodOrder);
@@ -655,6 +674,8 @@ function renderPaymentSession({ restartTimer, resetConfirmationFields, keepScrol
     elements.paymentApp.value = "";
     elements.transactionId.value = "";
     elements.payerUpiId.value = "";
+    elements.gpayLaunchButton.disabled = false;
+    elements.phonePeLaunchButton.disabled = false;
     elements.confirmPaymentButton.disabled = false;
     elements.upiLaunchButton.disabled = false;
     elements.copyUpiButton.disabled = false;
@@ -694,7 +715,15 @@ function buildUpiLink() {
     return "";
   }
 
-  const params = new URLSearchParams({
+  return buildUpiUri();
+}
+
+function buildUpiParams() {
+  if (!state.currentOrder) {
+    return new URLSearchParams();
+  }
+
+  return new URLSearchParams({
     pa: APP_CONFIG.upiId,
     pn: APP_CONFIG.businessName,
     am: state.currentOrder.amount.toFixed(2),
@@ -702,8 +731,76 @@ function buildUpiLink() {
     tn: `Print Order ${state.currentOrder.orderId}`,
     tr: state.currentOrder.orderId,
   });
+}
 
-  return `upi://pay?${params.toString()}`;
+function buildUpiUri({ scheme = "upi", path = "pay" } = {}) {
+  return `${scheme}://${path}?${buildUpiParams().toString()}`;
+}
+
+function buildAndroidUpiIntent(packageName) {
+  return `intent://pay?${buildUpiParams().toString()}#Intent;scheme=upi;package=${packageName};end`;
+}
+
+function isAndroidDevice() {
+  return /android/i.test(navigator.userAgent || "");
+}
+
+function isIosDevice() {
+  return /iphone|ipad|ipod/i.test(navigator.userAgent || "");
+}
+
+function buildPreferredUpiLaunchLink(appKey) {
+  const appConfig = UPI_APP_CONFIG[appKey];
+  if (!appConfig) {
+    return buildUpiLink();
+  }
+
+  if (isAndroidDevice()) {
+    return buildAndroidUpiIntent(appConfig.androidPackage);
+  }
+
+  if (isIosDevice() && appConfig.iosScheme) {
+    return buildUpiUri({
+      scheme: appConfig.iosScheme,
+      path: appConfig.iosPath || "pay",
+    });
+  }
+
+  return buildUpiLink();
+}
+
+function openUpiLink(preferredLink, fallbackLink = "") {
+  window.clearTimeout(state.upiFallbackTimerId);
+
+  if (!preferredLink) {
+    return;
+  }
+
+  let appOpened = false;
+  const handleVisibilityChange = () => {
+    if (document.hidden) {
+      appOpened = true;
+      window.clearTimeout(state.upiFallbackTimerId);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    }
+  };
+
+  document.addEventListener("visibilitychange", handleVisibilityChange);
+
+  if (fallbackLink && fallbackLink !== preferredLink) {
+    state.upiFallbackTimerId = window.setTimeout(() => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      if (!appOpened && !document.hidden) {
+        window.location.href = fallbackLink;
+      }
+    }, 900);
+  }
+
+  window.location.href = preferredLink;
+
+  window.setTimeout(() => {
+    document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, 2200);
 }
 
 function createUpiQr() {
@@ -755,6 +852,8 @@ function updateTimerDisplay() {
   state.timerExpired = true;
   window.clearInterval(state.timerIntervalId);
   elements.timerChip.classList.add("is-expired");
+  elements.gpayLaunchButton.disabled = true;
+  elements.phonePeLaunchButton.disabled = true;
   elements.confirmPaymentButton.disabled = true;
   elements.upiLaunchButton.disabled = true;
   elements.copyUpiButton.disabled = true;
@@ -787,7 +886,33 @@ function launchUpiApp() {
   }
 
   state.currentOrder.payment.upiLink = buildUpiLink();
-  window.location.href = state.currentOrder.payment.upiLink;
+  openUpiLink(state.currentOrder.payment.upiLink);
+}
+
+function launchNamedUpiApp(appKey) {
+  if (!state.currentOrder) {
+    showPaymentFeedback("Please review the order details first so the correct UPI amount is generated.", "error");
+    return;
+  }
+
+  if (state.timerExpired) {
+    showPaymentFeedback("The payment timer expired. Review the order again to generate a fresh UPI amount.", "error");
+    return;
+  }
+
+  const appConfig = UPI_APP_CONFIG[appKey];
+  if (!appConfig) {
+    launchUpiApp();
+    return;
+  }
+
+  elements.paymentApp.value = appConfig.label;
+  state.currentOrder.payment.upiLink = buildUpiLink();
+  showPaymentFeedback(
+    `Opening ${appConfig.label}. Complete the payment there, then return here and submit the transaction ID and your UPI ID.`,
+    "info"
+  );
+  openUpiLink(buildPreferredUpiLaunchLink(appKey), state.currentOrder.payment.upiLink);
 }
 
 async function copyUpiId() {
@@ -1055,6 +1180,8 @@ function downloadInvoice() {
 }
 
 function toggleSubmitting(isSubmitting) {
+  elements.gpayLaunchButton.disabled = isSubmitting || state.timerExpired;
+  elements.phonePeLaunchButton.disabled = isSubmitting || state.timerExpired;
   elements.confirmPaymentButton.disabled = isSubmitting || state.timerExpired;
   elements.confirmCodButton.disabled = isSubmitting;
   elements.upiLaunchButton.disabled = isSubmitting || state.timerExpired;

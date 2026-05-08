@@ -1549,6 +1549,87 @@ button {
   gap: 12px;
 }
 
+.mobile-upi-apps {
+  display: none;
+}
+
+.mobile-upi-label {
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 0.84rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.mobile-upi-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.upi-app-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 15px;
+  border-radius: 18px;
+  border: 1px solid rgba(216, 225, 239, 0.95);
+  background: linear-gradient(180deg, #ffffff, #f7faff);
+  color: var(--ink);
+  text-align: left;
+  box-shadow: 0 14px 28px rgba(17, 32, 56, 0.08);
+  touch-action: manipulation;
+}
+
+.upi-app-button:disabled {
+  opacity: 0.6;
+  box-shadow: none;
+}
+
+.upi-app-mark {
+  width: 42px;
+  height: 42px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  color: #ffffff;
+  font-size: 1rem;
+  font-weight: 900;
+}
+
+.upi-app-gpay .upi-app-mark {
+  background: linear-gradient(135deg, #4385f5, #34a853);
+}
+
+.upi-app-phonepe .upi-app-mark {
+  background: linear-gradient(135deg, #5f2dbf, #7d4cff);
+}
+
+.upi-app-copy {
+  display: block;
+  min-width: 0;
+}
+
+.upi-app-copy strong,
+.upi-app-copy small {
+  display: block;
+}
+
+.upi-app-copy strong {
+  font-size: 0.94rem;
+  font-weight: 800;
+}
+
+.upi-app-copy small {
+  margin-top: 3px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
 .status-note {
   padding: 14px 16px;
   border-radius: 14px;
@@ -2087,6 +2168,14 @@ button {
 
   .site-footer {
     padding-bottom: 96px;
+  }
+
+  .mobile-upi-apps {
+    display: block;
+  }
+
+  .mobile-upi-grid {
+    grid-template-columns: 1fr;
   }
 }
 
