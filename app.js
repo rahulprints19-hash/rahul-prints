@@ -32,14 +32,14 @@ const UPI_APP_CONFIG = {
   gpay: {
     label: "Google Pay",
     androidPackage: "com.google.android.apps.nbu.paisa.user",
-    iosScheme: "tez",
+    iosScheme: "gpay",
     iosPath: "upi/pay",
   },
   phonepe: {
     label: "PhonePe",
     androidPackage: "com.phonepe.app",
     iosScheme: "phonepe",
-    iosPath: "pay",
+    iosPath: "upi/pay",
   },
 };
 
@@ -746,7 +746,9 @@ function isAndroidDevice() {
 }
 
 function isIosDevice() {
-  return /iphone|ipad|ipod/i.test(navigator.userAgent || "");
+  const userAgent = navigator.userAgent || "";
+  return /iphone|ipad|ipod/i.test(userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 }
 
 function buildPreferredUpiLaunchLink(appKey) {
@@ -796,7 +798,7 @@ function openUpiLink(preferredLink, fallbackLink = "") {
     }, 900);
   }
 
-  window.location.href = preferredLink;
+  window.location.assign(preferredLink);
 
   window.setTimeout(() => {
     document.removeEventListener("visibilitychange", handleVisibilityChange);
@@ -909,7 +911,7 @@ function launchNamedUpiApp(appKey) {
   elements.paymentApp.value = appConfig.label;
   state.currentOrder.payment.upiLink = buildUpiLink();
   showPaymentFeedback(
-    `Opening ${appConfig.label}. Complete the payment there, then return here and submit the transaction ID and your UPI ID.`,
+    `${isIosDevice() ? `Opening ${appConfig.label} on iPhone. After payment, switch back to Safari and submit the transaction ID and your UPI ID.` : `Opening ${appConfig.label}. Complete the payment there, then return here and submit the transaction ID and your UPI ID.`}`,
     "info"
   );
   openUpiLink(buildPreferredUpiLaunchLink(appKey), state.currentOrder.payment.upiLink);
