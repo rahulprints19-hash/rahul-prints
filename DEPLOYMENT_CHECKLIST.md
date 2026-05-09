@@ -21,9 +21,8 @@ Rahul Prints Deployment Checklist
    Set `MAIL_FROM_EMAIL` to a verified custom-domain sender, not a Gmail/Hotmail/Yahoo address
    Add `MAIL_FROM_EMAIL`, `MAIL_FROM_NAME`, `MJ_APIKEY_PUBLIC`, and `MJ_APIKEY_PRIVATE`
 
-5. Configure Razorpay and business details
-   Add `RAZORPAY_KEY_ID` and `RAZORPAY_KEY_SECRET`
-   Confirm `BUSINESS_PHONE` and `BUSINESS_EMAIL`
+5. Configure UPI and business details
+   Confirm `UPI_ID`, `BUSINESS_PHONE`, and `BUSINESS_EMAIL`
    Optional: Set `ORDER_NOTIFICATION_EMAIL` if the print-desk email should differ from the public business email
 
 6. Optional WhatsApp automation
@@ -40,8 +39,9 @@ Rahul Prints Deployment Checklist
 9. Test before going live
    Open `http://localhost:3000`
    Upload a sample file
-   Tap `Pay Securely with Razorpay`
-   Complete a sample payment in Razorpay test mode
+   Check QR code generation
+   Tap `Pay Now` on a mobile device
+   Confirm payment with a sample UPI reference
    Verify PDF download works
    Verify both emails arrive
    Verify WhatsApp alert arrives if configured
@@ -50,7 +50,7 @@ Rahul Prints Deployment Checklist
    Push this project to GitHub
    Create a new Render Blueprint or Web Service from the repo
    If you use Blueprint sync, the included `render.yaml` is ready to use
-   Render will prompt for the Razorpay and Mailjet values defined with `sync: false` in `render.yaml`
+   Render will prompt for the Mailjet values defined with `sync: false` in `render.yaml`
    Add any remaining values from `.env` if you customize them beyond the defaults in `render.yaml`
    Keep the health check path as `/api/health`
 

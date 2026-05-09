@@ -1525,55 +1525,96 @@ button {
     linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(245, 249, 255, 0.98));
 }
 
-.checkout-card {
+.qr-title {
+  margin: 0;
+  font-weight: 800;
+}
+
+.upi-quickpay-card {
   display: grid;
   gap: 18px;
 }
 
-.qr-title {
-  margin-top: 0;
-  font-weight: 800;
+.upi-panel-head {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 16px;
 }
 
-.gateway-card {
-  min-height: 278px;
-  display: grid;
-  align-content: center;
-  gap: 12px;
-  border-radius: 22px;
-  border: 1px solid var(--line);
-  padding: 24px;
-  background:
-    radial-gradient(circle at top right, rgba(27, 102, 255, 0.12), transparent 38%),
-    linear-gradient(180deg, #f7fbff, #ffffff);
-}
-
-.gateway-card h4 {
-  margin: 0;
-  font-size: 1.25rem;
-}
-
-.gateway-card p {
-  margin: 0;
+.upi-panel-copy {
+  margin: 8px 0 0;
   color: var(--muted);
   line-height: 1.72;
 }
 
-.gateway-badge {
+.upi-direct-badge {
   display: inline-flex;
   width: max-content;
   align-items: center;
   padding: 8px 12px;
   border-radius: 999px;
-  background: rgba(27, 102, 255, 0.08);
-  color: var(--primary-dark);
+  background: rgba(18, 146, 104, 0.12);
+  color: var(--success);
   font-size: 0.8rem;
   font-weight: 800;
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 
-.gateway-meta {
+.qr-launcher {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border-radius: 24px;
+  border: 1px solid rgba(216, 225, 239, 0.96);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(244, 248, 255, 0.98));
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.qr-launcher:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 18px 34px rgba(17, 32, 56, 0.08);
+}
+
+.qr-launcher:focus-visible {
+  outline: 0;
+  border-color: rgba(27, 102, 255, 0.26);
+  box-shadow: 0 0 0 4px rgba(27, 102, 255, 0.12);
+}
+
+.qr-launcher-copy {
+  display: grid;
+  gap: 6px;
+}
+
+.qr-launcher-note {
+  margin: 2px 0 0;
+  color: var(--muted);
+  text-align: center;
+  line-height: 1.6;
+}
+
+.upi-direct-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.upi-direct-strip span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 999px;
+  background: #f7fbff;
+  border: 1px solid var(--line);
+  color: var(--primary-dark);
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.upi-launch-help {
   margin: 0;
   color: var(--muted);
   line-height: 1.6;
@@ -1604,7 +1645,19 @@ button {
 }
 
 .mobile-upi-apps {
-  display: none;
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 20px;
+  background: linear-gradient(180deg, #f8fbff, #ffffff);
+  border: 1px solid rgba(216, 225, 239, 0.94);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.mobile-upi-apps.is-emphasized {
+  border-color: rgba(27, 102, 255, 0.3);
+  box-shadow: 0 0 0 4px rgba(27, 102, 255, 0.08);
+  transform: translateY(-1px);
 }
 
 .mobile-upi-label {
@@ -1637,6 +1690,11 @@ button {
   touch-action: manipulation;
 }
 
+.upi-app-button:hover {
+  border-color: rgba(27, 102, 255, 0.24);
+  transform: translateY(-1px);
+}
+
 .upi-app-button:disabled {
   opacity: 0.6;
   box-shadow: none;
@@ -1660,6 +1718,22 @@ button {
   height: 28px;
 }
 
+.upi-app-mark-bhim {
+  background: linear-gradient(135deg, #ff8c2f, #2f7dff);
+  color: #ffffff;
+}
+
+.upi-app-mark-other {
+  background: linear-gradient(135deg, #0f1728, #2458d3);
+  color: #ffffff;
+}
+
+.upi-mark-text {
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+}
+
 .upi-app-copy {
   display: block;
   min-width: 0;
@@ -1679,10 +1753,6 @@ button {
   margin-top: 3px;
   color: var(--muted);
   line-height: 1.45;
-}
-
-.legacy-upi-shell[hidden] {
-  display: none !important;
 }
 
 .status-note {
@@ -2384,9 +2454,9 @@ body.has-active-payment-session .mobile-order-bar {
     gap: 16px;
   }
 
-  .gateway-card {
-    min-height: 220px;
-    padding: 20px;
+  .upi-panel-head,
+  .upi-direct-strip {
+    flex-direction: column;
   }
 
   .qr-code {
@@ -2400,10 +2470,6 @@ body.has-active-payment-session .mobile-order-bar {
 
   .site-footer {
     padding-bottom: 96px;
-  }
-
-  .mobile-upi-apps {
-    display: block;
   }
 
   .mobile-upi-grid {

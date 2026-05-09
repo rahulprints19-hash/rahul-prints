@@ -2,8 +2,6 @@ const APP_CONFIG = window.APP_CONFIG || {
   businessName: "Rahul Prints",
   businessEmail: "owner@example.com",
   businessPhone: "+919345574203",
-  razorpayKeyId: "",
-  razorpayEnabled: false,
   upiId: "rahulsiva190@okicici",
   upiPayeeName: "Rahul Siva",
   upiMerchantCode: "",
@@ -26,13 +24,13 @@ const state = {
   processedBwUpload: null,
   processedBwPromise: null,
   isAnalyzingPdf: false,
-  isLaunchingRazorpay: false,
   isSubmittingPayment: false,
   analysisProgress: null,
   analysisRunId: 0,
   upiFallbackTimerId: null,
   externalPaymentAttempt: null,
   upiLaunchCooldownUntil: 0,
+  upiOptionsPulseTimerId: null,
   scrollAnimationFrameId: null,
   scrollTargetTimerId: null,
 };
@@ -41,19 +39,22 @@ const elements = {};
 const UPI_APP_CONFIG = {
   gpay: {
     label: "Google Pay",
-    androidPackage: "com.google.android.apps.nbu.paisa.user",
     iosScheme: "gpay",
     iosPath: "upi/pay",
   },
   phonepe: {
     label: "PhonePe",
-    androidPackage: "com.phonepe.app",
     iosScheme: "phonepe",
     iosPath: "upi/pay",
   },
   paytm: {
     label: "Paytm",
-    androidPackage: "net.one97.paytm",
+  },
+  bhim: {
+    label: "BHIM",
+  },
+  other: {
+    label: "Other UPI App",
   },
 };
 const UPI_APP_FALLBACK_DELAY_MS = 1800;
@@ -102,14 +103,15 @@ function wireElements() {
     "orderIdDisplay",
     "paymentTimer",
     "timerChip",
-    "razorpayLaunchButton",
-    "razorpayAssistText",
+    "qrLauncherButton",
     "qrCode",
     "upiIdText",
     "upiPayeeNameText",
     "gpayLaunchButton",
     "phonePeLaunchButton",
     "paytmLaunchButton",
+    "bhimLaunchButton",
+    "otherUpiLaunchButton",
     "upiLaunchButton",
     "copyUpiButton",
     "paymentAttemptActions",
@@ -145,6 +147,7 @@ function wireElements() {
   elements.methodTabs = Array.from(document.querySelectorAll(".method-tab"));
   elements.paymentProgressItems = Array.from(document.querySelectorAll("[data-payment-step]"));
   elements.quickScrollLinks = Array.from(document.querySelectorAll("[data-scroll-target]"));
+  elements.mobileUpiApps = document.querySelector(".mobile-upi-apps");
 }
 
 function applyPublicConfig() {
@@ -154,11 +157,6 @@ function applyPublicConfig() {
   elements.upiIdText.textContent = APP_CONFIG.upiId;
   if (elements.upiPayeeNameText) {
     elements.upiPayeeNameText.textContent = APP_CONFIG.upiPayeeName || APP_CONFIG.businessName;
-  }
-  if (elements.razorpayAssistText) {
-    elements.razorpayAssistText.textContent = APP_CONFIG.razorpayEnabled
-      ? "The receipt is generated only after Razorpay returns a verified successful payment."
-      : "Razorpay is not configured yet. Add Razorpay keys on the server before accepting online payments.";
   }
   elements.supportPhoneLink.href = `tel:${normalisePhone(APP_CONFIG.businessPhone)}`;
   elements.supportPhoneLink.textContent = `Call ${APP_CONFIG.businessPhone}`;
@@ -171,58 +169,6 @@ function configurePdfWorker() {
     window.pdfjsLib.GlobalWorkerOptions.workerSrc =
       "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
   }
-}
-
-function isRazorpayReady() {
-  return Boolean(APP_CONFIG.razorpayEnabled && APP_CONFIG.razorpayKeyId);
-}
-
-function refreshRazorpayButton() {
-  if (!elements.razorpayLaunchButton) {
-    return;
-  }
-
-  const disabled =
-    !state.currentOrder ||
-    state.timerExpired ||
-    state.isLaunchingRazorpay ||
-    state.isSubmittingPayment ||
-    !isRazorpayReady();
-
-  elements.razorpayLaunchButton.disabled = disabled;
-  elements.razorpayLaunchButton.classList.toggle("is-loading", state.isLaunchingRazorpay || state.isSubmittingPayment);
-  elements.razorpayLaunchButton.innerHTML =
-    state.isLaunchingRazorpay
-      ? '<span class="btn-spinner" aria-hidden="true"></span> Preparing Secure Checkout'
-      : state.isSubmittingPayment
-        ? '<span class="btn-spinner" aria-hidden="true"></span> Verifying Payment'
-        : '<i class="fas fa-credit-card"></i> Pay Securely with Razorpay';
-}
-
-function prepareRazorpayCheckoutState() {
-  if (!state.currentOrder) {
-    return;
-  }
-
-  state.currentOrder.payment = {
-    method: "razorpay",
-    app: "Razorpay Checkout",
-    transactionId: "",
-    payerUpiId: "",
-    paidAt: "",
-    razorpayOrderId: "",
-    razorpayPaymentId: "",
-    razorpaySignature: "",
-    verificationStatus: "checkout-pending",
-  };
-
-  if (elements.razorpayAssistText) {
-    elements.razorpayAssistText.textContent = isRazorpayReady()
-      ? "Tap the button above to open Razorpay Checkout. The receipt is generated automatically after payment verification."
-      : "Razorpay is not configured yet. Add Razorpay keys on the server before accepting online payments.";
-  }
-
-  refreshRazorpayButton();
 }
 
 function hasBlackWhiteConversionTools() {
@@ -238,7 +184,6 @@ function bindEvents() {
   elements.copiesDecreaseButton.addEventListener("click", () => adjustCopies(-1));
   elements.copiesIncreaseButton.addEventListener("click", () => adjustCopies(1));
   elements.uploadForm.addEventListener("submit", handleOrderReview);
-  elements.razorpayLaunchButton.addEventListener("click", launchRazorpayCheckout);
   elements.paymentConfirmationForm.addEventListener("submit", confirmUpiPayment);
   elements.paymentApp.addEventListener("change", showDefaultPaymentFeedback);
   elements.transactionId.addEventListener("input", handleTransactionIdInput);
@@ -246,6 +191,10 @@ function bindEvents() {
   elements.gpayLaunchButton.addEventListener("click", () => launchNamedUpiApp("gpay"));
   elements.phonePeLaunchButton.addEventListener("click", () => launchNamedUpiApp("phonepe"));
   elements.paytmLaunchButton.addEventListener("click", () => launchNamedUpiApp("paytm"));
+  elements.bhimLaunchButton.addEventListener("click", () => launchNamedUpiApp("bhim"));
+  elements.otherUpiLaunchButton.addEventListener("click", () => launchNamedUpiApp("other"));
+  elements.qrLauncherButton.addEventListener("click", handleQuickPayLauncher);
+  elements.qrLauncherButton.addEventListener("keydown", handleQuickPayLauncherKeydown);
   elements.upiLaunchButton.addEventListener("click", launchUpiApp);
   elements.copyUpiButton.addEventListener("click", copyUpiId);
   elements.paymentSucceededButton.addEventListener("click", () => handleManualPaymentOutcome("success-selected"));
@@ -761,7 +710,6 @@ function renderPaymentSession({ restartTimer, resetConfirmationFields, keepScrol
   elements.paymentSuccess.classList.add("is-hidden");
   elements.timerChip.classList.remove("is-expired");
   state.isSubmittingPayment = false;
-  state.isLaunchingRazorpay = false;
 
   if (resetConfirmationFields) {
     elements.paymentApp.value = "";
@@ -770,6 +718,8 @@ function renderPaymentSession({ restartTimer, resetConfirmationFields, keepScrol
     elements.gpayLaunchButton.disabled = false;
     elements.phonePeLaunchButton.disabled = false;
     elements.paytmLaunchButton.disabled = false;
+    elements.bhimLaunchButton.disabled = false;
+    elements.otherUpiLaunchButton.disabled = false;
     elements.confirmPaymentButton.disabled = false;
     elements.upiLaunchButton.disabled = false;
     elements.copyUpiButton.disabled = false;
@@ -782,7 +732,8 @@ function renderPaymentSession({ restartTimer, resetConfirmationFields, keepScrol
   setPaymentSessionState(true);
   setPaymentProgress("pay");
   setPaymentMethod(state.paymentMethod || "upi");
-  prepareRazorpayCheckoutState();
+  createUpiQr();
+  updatePaymentAttemptUi();
 
   if (restartTimer && state.paymentMethod === "upi") {
     startPaymentTimer();
@@ -921,6 +872,7 @@ function buildUpiParams() {
     pn: APP_CONFIG.upiPayeeName || APP_CONFIG.businessName,
     am: state.currentOrder.amount.toFixed(2),
     cu: "INR",
+    tn: `Rahul Prints order ${state.currentOrder.orderId}`,
   };
 
   if (APP_CONFIG.upiMerchantCode) {
@@ -1102,6 +1054,38 @@ function isIosDevice() {
     (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 }
 
+function isMobileDevice() {
+  return isAndroidDevice() || isIosDevice();
+}
+
+function pulseUpiAppOptions() {
+  if (!elements.mobileUpiApps) {
+    return;
+  }
+
+  elements.mobileUpiApps.classList.remove("is-emphasized");
+  window.clearTimeout(state.upiOptionsPulseTimerId);
+  window.requestAnimationFrame(() => {
+    elements.mobileUpiApps.classList.add("is-emphasized");
+  });
+  state.upiOptionsPulseTimerId = window.setTimeout(() => {
+    elements.mobileUpiApps.classList.remove("is-emphasized");
+  }, 1600);
+}
+
+function handleQuickPayLauncher() {
+  launchUpiApp();
+}
+
+function handleQuickPayLauncherKeydown(event) {
+  if (event.key !== "Enter" && event.key !== " ") {
+    return;
+  }
+
+  event.preventDefault();
+  launchUpiApp();
+}
+
 function buildPreferredUpiLaunchLink(appKey) {
   const appConfig = UPI_APP_CONFIG[appKey];
   if (!appConfig) {
@@ -1233,10 +1217,11 @@ function updateTimerDisplay() {
   state.timerExpired = true;
   window.clearInterval(state.timerIntervalId);
   elements.timerChip.classList.add("is-expired");
-  refreshRazorpayButton();
   elements.gpayLaunchButton.disabled = true;
   elements.phonePeLaunchButton.disabled = true;
   elements.paytmLaunchButton.disabled = true;
+  elements.bhimLaunchButton.disabled = true;
+  elements.otherUpiLaunchButton.disabled = true;
   elements.confirmPaymentButton.disabled = true;
   elements.upiLaunchButton.disabled = true;
   elements.copyUpiButton.disabled = true;
@@ -1247,7 +1232,7 @@ function updateTimerDisplay() {
     });
   }
   showPaymentFeedback(
-    "Payment session expired. Review the order again to generate a fresh amount and Razorpay checkout session before confirming.",
+    "Payment session expired. Review the order again to generate a fresh amount and QR code before confirming.",
     "error"
   );
 }
@@ -1261,151 +1246,7 @@ function setPaymentMethod(method) {
   elements.codPanel.classList.toggle("is-hidden", method !== "cod");
   elements.timerChip.classList.toggle("is-hidden", method !== "upi");
   showDefaultPaymentFeedback();
-  refreshRazorpayButton();
   updatePaymentAttemptUi();
-}
-
-async function createRazorpayOrder() {
-  const response = await fetch("/api/payments/razorpay/order", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(state.currentOrder),
-  });
-
-  const result = await readJsonResponse(response);
-  if (!response.ok || !result.success) {
-    throw new Error(
-      result.error ||
-      result.message ||
-      "Could not start Razorpay checkout right now."
-    );
-  }
-
-  return result;
-}
-
-async function launchRazorpayCheckout() {
-  if (!state.currentOrder) {
-    showPaymentFeedback("Please review the order details first so the correct payment amount is generated.", "error");
-    return;
-  }
-
-  if (state.timerExpired) {
-    showPaymentFeedback("The payment timer expired. Review the order again to generate a fresh amount.", "error");
-    return;
-  }
-
-  if (!isRazorpayReady()) {
-    showPaymentFeedback("Razorpay is not configured on the server yet. Add the Razorpay keys and try again.", "error");
-    return;
-  }
-
-  if (typeof window.Razorpay !== "function") {
-    showPaymentFeedback("The Razorpay checkout script is still loading. Please wait a moment and try again.", "warning");
-    return;
-  }
-
-  if (state.isLaunchingRazorpay) {
-    showPaymentFeedback("Secure checkout is already being prepared. Please wait a moment.", "info");
-    return;
-  }
-
-  state.isLaunchingRazorpay = true;
-  refreshRazorpayButton();
-
-  let checkoutOpened = false;
-  try {
-    showPaymentFeedback("Preparing secure Razorpay checkout...", "working");
-    const checkout = await createRazorpayOrder();
-
-    state.currentOrder.payment = {
-      ...state.currentOrder.payment,
-      method: "razorpay",
-      app: "Razorpay Checkout",
-      razorpayOrderId: checkout.razorpayOrderId,
-      verificationStatus: "checkout-opened",
-    };
-
-    const options = {
-      key: checkout.keyId,
-      amount: checkout.amount,
-      currency: checkout.currency || "INR",
-      name: APP_CONFIG.businessName,
-      description: `Rahul Prints order ${state.currentOrder.orderId}`,
-      order_id: checkout.razorpayOrderId,
-      prefill: {
-        name: state.currentOrder.customer.name,
-        email: state.currentOrder.customer.email,
-        contact: normalisePhone(state.currentOrder.customer.phone),
-      },
-      notes: {
-        appOrderId: state.currentOrder.orderId,
-        documentName: state.currentOrder.document.fileName,
-      },
-      theme: {
-        color: "#1958ff",
-      },
-      modal: {
-        ondismiss: () => {
-          state.isLaunchingRazorpay = false;
-          refreshRazorpayButton();
-          showPaymentFeedback(
-            "Razorpay checkout was closed before the payment finished. You can reopen it and try again.",
-            "warning"
-          );
-        },
-      },
-      handler: async (response) => {
-        state.isLaunchingRazorpay = false;
-        refreshRazorpayButton();
-        state.currentOrder.payment = {
-          ...state.currentOrder.payment,
-          method: "razorpay",
-          app: "Razorpay Checkout",
-          transactionId: response.razorpay_payment_id || "",
-          paidAt: new Date().toISOString(),
-          razorpayOrderId: checkout.razorpayOrderId,
-          razorpayPaymentId: response.razorpay_payment_id || "",
-          razorpaySignature: response.razorpay_signature || "",
-          verificationStatus: "checkout-success",
-        };
-
-        showPaymentFeedback("Payment received from Razorpay. Verifying the payment and generating your receipt.", "working");
-        await submitOrderConfirmation();
-      },
-    };
-
-    const razorpay = new window.Razorpay(options);
-    if (typeof razorpay.on === "function") {
-      razorpay.on("payment.failed", (event) => {
-        state.isLaunchingRazorpay = false;
-        refreshRazorpayButton();
-        const description = event?.error?.description || event?.error?.reason || event?.error?.code || "";
-        showPaymentFeedback(
-          description
-            ? `Razorpay reported that the payment failed: ${description}`
-            : "Razorpay reported that the payment was not completed. Please try again.",
-          "error"
-        );
-      });
-    }
-
-    showPaymentFeedback(
-      "Razorpay checkout is opening. Complete the payment there, then stay on this page while we verify it.",
-      "info"
-    );
-    razorpay.open();
-    checkoutOpened = true;
-  } catch (error) {
-    showPaymentFeedback(getFriendlyConfirmationErrorMessage(error), "error");
-  } finally {
-    if (!checkoutOpened) {
-      state.isLaunchingRazorpay = false;
-      refreshRazorpayButton();
-    }
-  }
 }
 
 function launchUpiApp() {
@@ -1419,6 +1260,29 @@ function launchUpiApp() {
     return;
   }
 
+  if (state.isSubmittingPayment) {
+    showPaymentFeedback("Payment details are already being submitted. Please wait a moment.", "info");
+    return;
+  }
+
+  pulseUpiAppOptions();
+
+  if (!isMobileDevice()) {
+    showPaymentFeedback(
+      "Scan the QR code with any UPI app on your phone, or copy the UPI ID manually.",
+      "info"
+    );
+    return;
+  }
+
+  if (isIosDevice()) {
+    showPaymentFeedback(
+      "Choose Google Pay, PhonePe, Paytm, BHIM, or another UPI app below. The amount is already filled in automatically.",
+      "info"
+    );
+    return;
+  }
+
   if (Date.now() < state.upiLaunchCooldownUntil) {
     showPaymentFeedback("The payment app is already opening. Please wait a moment before trying again.", "info");
     return;
@@ -1428,10 +1292,14 @@ function launchUpiApp() {
   state.currentOrder.payment.upiLink = buildUpiLink();
   registerExternalPaymentAttempt({
     appKey: "generic-upi",
-    appLabel: elements.paymentApp.value.trim() || "UPI app",
+    appLabel: elements.paymentApp.value.trim() || "Other UPI App",
   });
   syncPaymentAttemptStart(state.externalPaymentAttempt);
   updatePaymentAttemptUi();
+  showPaymentFeedback(
+    "Your phone should now show the installed UPI apps with the exact amount filled in. If nothing opens, use one of the quick-pay buttons below or scan the QR code.",
+    "info"
+  );
   openUpiLink(state.currentOrder.payment.upiLink);
 }
 
@@ -1443,6 +1311,20 @@ function launchNamedUpiApp(appKey) {
 
   if (state.timerExpired) {
     showPaymentFeedback("The payment timer expired. Review the order again to generate a fresh UPI amount.", "error");
+    return;
+  }
+
+  if (state.isSubmittingPayment) {
+    showPaymentFeedback("Payment details are already being submitted. Please wait a moment.", "info");
+    return;
+  }
+
+  if (!isMobileDevice()) {
+    pulseUpiAppOptions();
+    showPaymentFeedback(
+      "Open this page on your phone to launch a UPI app directly, or scan the QR code from your desktop screen.",
+      "info"
+    );
     return;
   }
 
@@ -1458,6 +1340,7 @@ function launchNamedUpiApp(appKey) {
     return;
   }
 
+  pulseUpiAppOptions();
   elements.paymentApp.value = appConfig.label;
   state.currentOrder.payment.upiLink = buildUpiLink();
   registerExternalPaymentAttempt({
@@ -1466,10 +1349,13 @@ function launchNamedUpiApp(appKey) {
   });
   syncPaymentAttemptStart(state.externalPaymentAttempt);
   updatePaymentAttemptUi();
+  const iPhoneAppHint = isIosDevice() && appConfig.iosScheme
+    ? `Opening ${appConfig.label} on iPhone.`
+    : isIosDevice()
+      ? `Use ${appConfig.label} if it is installed on your iPhone, otherwise try another UPI app below.`
+      : `Opening a standard UPI payment request for better Android compatibility. If your phone asks which app to use, choose ${appConfig.label}.`;
   showPaymentFeedback(
-    `${isIosDevice()
-      ? `Opening ${appConfig.label} on iPhone. After payment, switch back to Safari and submit the transaction ID and your UPI ID.`
-      : `Opening a standard UPI payment request for better Android compatibility. If your phone asks which app to use, choose ${appConfig.label}, complete the payment there, then return here and submit the transaction ID and your UPI ID.`} If ${appConfig.label} says the amount was not debited, the payment did not go through. Return here without confirming and retry with the QR code, another bank account, or another UPI app.`,
+    `${iPhoneAppHint} After payment, switch back here and submit the transaction ID and your UPI ID. If ${appConfig.label} says the amount was not debited, the payment did not go through. Retry with the QR code, another UPI app, or another bank account.`,
     "info"
   );
   openUpiLink(buildPreferredUpiLaunchLink(appKey), state.currentOrder.payment.upiLink);
@@ -1771,8 +1657,8 @@ function handleSuccessfulConfirmation(result) {
     : hasDeliveryWarnings
       ? "Your receipt is ready. Automatic owner/customer delivery needs a retry, but the order has been safely recorded on the server."
       : isBwOnly
-        ? "Your Razorpay payment is verified, the B/W print-ready file is ready, and the receipt will download automatically."
-        : "Your Razorpay payment is verified, the receipt is ready, and the print desk has received the customer PDF.";
+        ? "Your payment is verified, the B/W print-ready file is ready, and the receipt will download automatically."
+        : "Your payment is verified, the receipt is ready, and the print desk has received the customer PDF.";
 
   const bytes = Uint8Array.from(atob(result.invoiceBase64), (char) => char.charCodeAt(0));
   state.invoiceBlob = new Blob([bytes], { type: "application/pdf" });
@@ -1821,7 +1707,7 @@ function renderDeliveryStatus(result) {
       <article class="receipt-overview-card">
         <span>Date & Time</span>
         <strong>${escapeHtml(formatDateTime(receipt.paidAt || new Date().toISOString()))}</strong>
-        <small>${escapeHtml(receipt.paymentMethod || "Online Payment")}</small>
+        <small>${escapeHtml(receipt.paymentMethod || "UPI")}</small>
       </article>
     </div>
 
@@ -1903,10 +1789,11 @@ function downloadInvoice() {
 
 function toggleSubmitting(isSubmitting) {
   state.isSubmittingPayment = isSubmitting;
-  refreshRazorpayButton();
   elements.gpayLaunchButton.disabled = isSubmitting || state.timerExpired;
   elements.phonePeLaunchButton.disabled = isSubmitting || state.timerExpired;
   elements.paytmLaunchButton.disabled = isSubmitting || state.timerExpired;
+  elements.bhimLaunchButton.disabled = isSubmitting || state.timerExpired;
+  elements.otherUpiLaunchButton.disabled = isSubmitting || state.timerExpired;
   elements.confirmPaymentButton.disabled = isSubmitting || state.timerExpired;
   elements.confirmCodButton.disabled = isSubmitting;
   elements.upiLaunchButton.disabled = isSubmitting || state.timerExpired;
@@ -1944,8 +1831,8 @@ function resetPendingPaymentSession() {
   state.currentOrder = null;
   state.paymentExpiresAt = null;
   state.timerExpired = false;
-  state.isLaunchingRazorpay = false;
   state.isSubmittingPayment = false;
+  window.clearTimeout(state.upiOptionsPulseTimerId);
   window.clearTimeout(state.upiFallbackTimerId);
   state.externalPaymentAttempt = null;
   state.upiLaunchCooldownUntil = 0;
@@ -1960,7 +1847,9 @@ function resetPendingPaymentSession() {
   elements.paymentApp.disabled = false;
   elements.transactionId.disabled = false;
   elements.payerUpiId.disabled = false;
-  refreshRazorpayButton();
+  if (elements.mobileUpiApps) {
+    elements.mobileUpiApps.classList.remove("is-emphasized");
+  }
   clearPaymentFeedback();
   setPaymentProgress("review");
 }
@@ -2363,28 +2252,6 @@ function buildReceiptPaymentItems(receipt, result, currentOrder) {
     ].join("");
   }
 
-  if (receipt.gatewayProvider === "Razorpay" || /razorpay/i.test(receipt.paymentMethod || "")) {
-    return [
-      renderReceiptItem("Customer Name", receipt.customerName || currentOrder.customer?.name || "NA"),
-      renderReceiptItem("Email ID", receipt.customerEmail || currentOrder.customer?.email || "NA"),
-      renderReceiptItem(
-        "Razorpay Payment ID",
-        receipt.gatewayPaymentId || receipt.transactionId || result.verification?.gatewayPaymentId || "NA"
-      ),
-      renderReceiptItem(
-        "Razorpay Order ID",
-        receipt.gatewayOrderId || result.verification?.gatewayOrderId || "NA"
-      ),
-      renderReceiptItem("Payment Method", receipt.gatewayMethod || "Online Payment"),
-      renderReceiptItem("Number of Copies", String(receipt.copies || currentOrder.document?.copies || "0")),
-      renderReceiptItem("Color Pages Count", String(receipt.colorPages || currentOrder.document?.colorPages || "0")),
-      renderReceiptItem("Black & White Pages Count", String(receipt.bwPages || currentOrder.document?.bwPages || "0")),
-      renderReceiptItem("Total Price", formatCurrency(receipt.totalPrice || result.amount)),
-      renderReceiptItem("Payment Status", receipt.paymentStatus || "Payment Successful"),
-      renderReceiptItem("Date & Time", formatDateTime(receipt.paidAt || new Date().toISOString())),
-    ].join("");
-  }
-
   return [
     renderReceiptItem("Customer Name", receipt.customerName || currentOrder.customer?.name || "NA"),
     renderReceiptItem("Email ID", receipt.customerEmail || currentOrder.customer?.email || "NA"),
@@ -2465,22 +2332,49 @@ function showDefaultPaymentFeedback() {
 
   if (state.timerExpired) {
     showPaymentFeedback(
-      "Payment session expired. Review the order again to generate a fresh amount and Razorpay checkout session.",
+      "Payment session expired. Review the order again to generate a fresh amount and QR code.",
       "error"
     );
     return;
   }
 
-  if (!isRazorpayReady()) {
-    showPaymentFeedback(
-      "Razorpay is not configured yet. Add RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET on the server before accepting online payments.",
-      "error"
-    );
-    return;
+  const attempt = state.externalPaymentAttempt;
+  if (attempt?.returned) {
+    if (attempt.status === "success-selected") {
+      showPaymentFeedback(
+        `Payment marked as successful in ${attempt.appLabel || "your UPI app"}. Enter the exact transaction ID and your UPI ID to verify the order.`,
+        "success"
+      );
+      return;
+    }
+    if (attempt.status === "failed-selected") {
+      showPaymentFeedback(
+        `No money was captured in ${attempt.appLabel || "the UPI app"}. Retry with the QR code, another bank account, or another UPI app before confirming the order.`,
+        "error"
+      );
+      return;
+    }
+    if (attempt.status === "pending-selected") {
+      showPaymentFeedback(
+        `The payment is still pending in ${attempt.appLabel || "the UPI app"}. Wait for a final success screen and a real transaction ID before confirming the order.`,
+        "warning"
+      );
+      return;
+    }
+    if (requiresManualOutcomeSelection(attempt)) {
+      showPaymentFeedback(
+        `Back from ${attempt.appLabel || "your UPI app"}. Choose whether the payment succeeded, failed, or is still pending before confirming the order.`,
+        "warning"
+      );
+      return;
+    }
   }
 
+  const pricing = buildPricingSummary();
   showPaymentFeedback(
-    "Tap Pay Securely with Razorpay to open checkout. The customer can choose UPI, cards, netbanking, or wallets there, and Rahul Prints will generate the receipt only after the payment is verified on the server.",
+    pricing?.convertedToBw
+      ? "Tap Pay Now, a quick-pay app button, or the QR card to start payment. On Android, the phone should show installed UPI apps. On iPhone, use the app buttons below the QR. After payment, submit the exact transaction ID and payer UPI ID."
+      : "Pay with the QR code or any listed UPI app. The amount is auto-filled. After payment, submit the exact transaction ID and payer UPI ID. If the app said the amount was not debited, retry instead of confirming.",
     "info"
   );
 }

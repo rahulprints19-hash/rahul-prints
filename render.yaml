@@ -17,10 +17,6 @@ services:
         sync: false
       - key: BUSINESS_PHONE
         value: "+919345574203"
-      - key: RAZORPAY_KEY_ID
-        sync: false
-      - key: RAZORPAY_KEY_SECRET
-        sync: false
       - key: UPI_ID
         value: rahulsiva190@okicici
       - key: PRICE_BW

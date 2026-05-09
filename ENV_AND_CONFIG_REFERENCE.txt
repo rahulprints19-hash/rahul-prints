@@ -16,14 +16,8 @@ Owner email address that should receive every order PDF.
 `BUSINESS_PHONE`
 Phone number shown in the UI and in generated invoices.
 
-`RAZORPAY_KEY_ID`
-Public Razorpay key used by the checkout button in the browser.
-
-`RAZORPAY_KEY_SECRET`
-Secret Razorpay key used only on the server to create orders and verify payment signatures.
-
 `UPI_ID`
-Legacy direct UPI fallback used by older payment flows.
+UPI ID used for the payment QR code and deep link.
 
 Choose one email provider
 -------------------------
@@ -90,7 +84,7 @@ Price per black and white page. Default: `1`
 Price per color page. Default: `10`
 
 `PAYMENT_TIMEOUT_MINUTES`
-Visible payment timer for Razorpay checkout. Default: `5`
+Visible payment timer for QR and UPI payments. Default: `5`
 
 `DRY_RUN_NOTIFICATIONS=true`
 Optional local testing mode. Generates the invoice and returns success without sending real emails or WhatsApp messages.
