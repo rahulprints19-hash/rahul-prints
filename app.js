@@ -46,6 +46,7 @@ const UPI_APP_CONFIG = {
     iosPath: "upi/pay",
   },
 };
+const UPI_APP_FALLBACK_DELAY_MS = 1800;
 
 document.addEventListener("DOMContentLoaded", () => {
   wireElements();
@@ -831,9 +832,8 @@ function buildUpiParams() {
     pn: APP_CONFIG.businessName,
     am: state.currentOrder.amount.toFixed(2),
     cu: "INR",
-    tn: `Print Order ${state.currentOrder.orderId}`,
+    tn: `Print order ${state.currentOrder.orderId}`,
     tr: state.currentOrder.orderId,
-    url: buildOrderReferenceUrl(),
   };
 
   if (APP_CONFIG.upiMerchantCode) {
@@ -845,18 +845,6 @@ function buildUpiParams() {
 
 function buildUpiUri({ scheme = "upi", path = "pay" } = {}) {
   return `${scheme}://${path}?${buildUpiParams().toString()}`;
-}
-
-function buildOrderReferenceUrl() {
-  if (!state.currentOrder) {
-    return window.location.href;
-  }
-
-  try {
-    return new URL(`/#order-${state.currentOrder.orderId}`, window.location.origin).toString();
-  } catch {
-    return window.location.href;
-  }
 }
 
 function buildUpiQrImageUrl(upiLink) {
@@ -885,15 +873,15 @@ function buildPreferredUpiLaunchLink(appKey) {
     return buildUpiLink();
   }
 
+  if (isAndroidDevice()) {
+    return buildAndroidUpiIntent(appConfig.androidPackage);
+  }
+
   if (appKey === "gpay") {
     return buildUpiUri({
       scheme: "gpay",
       path: "upi/pay",
     });
-  }
-
-  if (isAndroidDevice()) {
-    return buildAndroidUpiIntent(appConfig.androidPackage);
   }
 
   if (isIosDevice() && appConfig.iosScheme) {
@@ -940,7 +928,7 @@ function openUpiLink(preferredLink, fallbackLink = "") {
       if (!appOpened && !document.hidden) {
         window.location.href = fallbackLink;
       }
-    }, 900);
+    }, UPI_APP_FALLBACK_DELAY_MS);
   }
 
   navigateToDeepLink(preferredLink);
@@ -1070,7 +1058,7 @@ function launchNamedUpiApp(appKey) {
     appLabel: appConfig.label,
   });
   showPaymentFeedback(
-    `${isIosDevice() ? `Opening ${appConfig.label} on iPhone. After payment, switch back to Safari and submit the transaction ID and your UPI ID.` : `Opening ${appConfig.label}. Complete the payment there, then return here and submit the transaction ID and your UPI ID.`} If the app shows a payment error, use the QR code or the main UPI button and then continue below with the same order amount.`,
+    `${isIosDevice() ? `Opening ${appConfig.label} on iPhone. After payment, switch back to Safari and submit the transaction ID and your UPI ID.` : `Opening ${appConfig.label}. Complete the payment there, then return here and submit the transaction ID and your UPI ID.`} If ${appConfig.label} says the amount was not debited, the payment did not go through. Return here without confirming and retry with the QR code, another bank account, or another UPI app.`,
     "info"
   );
   openUpiLink(buildPreferredUpiLaunchLink(appKey), state.currentOrder.payment.upiLink);
@@ -1104,16 +1092,16 @@ function handlePaymentAppVisibilityChange() {
   attempt.returned = true;
   showPaymentFeedback(
     buildReturnedFromPaymentAppMessage(attempt),
-    isGooglePayAttempt(attempt) ? "warning" : "info"
+    "info"
   );
 }
 
 function buildReturnedFromPaymentAppMessage(attempt) {
   if (isGooglePayAttempt(attempt)) {
-    return `Back from Google Pay. If Google Pay said "Your payment has not been debited" or that your bank account transaction limit was exceeded, the payment failed and no money was taken. Switch to another bank account or UPI app and retry. Only enter the transaction ID below if the payment succeeded.`;
+    return 'Back from Google Pay. If Google Pay said "Your money has not been debited" or "bank limit exceeded", that message came from Google Pay or the bank and the payment did not go through. No money should be confirmed from Rahul Prints until you have a real transaction ID. Retry with QR, another bank account, or another UPI app, and only enter the transaction ID below after a successful payment.';
   }
 
-  return `Back from ${attempt.appLabel || "your UPI app"}. If the app showed that the payment failed or the amount was not debited, do not confirm payment yet. Retry with another bank account, use another UPI app, or scan the QR code. Only enter the transaction ID below if the payment succeeded.`;
+  return `Back from ${attempt.appLabel || "your UPI app"}. If the app showed that the payment failed or the amount was not debited, the payment did not go through. Retry with another bank account, use another UPI app, or scan the QR code. Only enter the transaction ID below after a successful payment.`;
 }
 
 function isGooglePayAttempt(attempt) {
@@ -1901,8 +1889,8 @@ function showDefaultPaymentFeedback() {
   const pricing = buildPricingSummary();
   showPaymentFeedback(
     pricing?.convertedToBw
-      ? "After payment, submit the exact transaction ID and payer UPI ID. If the UPI app said the amount was not debited or your bank limit was exceeded, do not confirm yet."
-      : "After payment, submit the exact transaction ID and payer UPI ID to verify the order and open the receipt below. If the payment app said the amount was not debited, retry first instead of confirming.",
+      ? "After payment, submit the exact transaction ID and payer UPI ID. If the UPI app said the amount was not debited or your bank limit was exceeded, that means the bank declined the payment and you should retry instead of confirming."
+      : "After payment, submit the exact transaction ID and payer UPI ID to verify the order and open the receipt below. If the payment app said the amount was not debited, that means no payment was captured and you should retry first instead of confirming.",
     "info"
   );
 }
