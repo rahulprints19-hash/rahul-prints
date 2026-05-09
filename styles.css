@@ -1648,6 +1648,25 @@ button {
   line-height: 1.82;
 }
 
+.payment-failure-note {
+  margin-bottom: 18px;
+  padding: 15px 16px;
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(255, 248, 238, 0.98), rgba(255, 252, 247, 0.96));
+  border: 1px solid rgba(216, 122, 18, 0.16);
+  color: #8a5300;
+  line-height: 1.66;
+}
+
+.payment-failure-note strong,
+.payment-failure-note span {
+  display: block;
+}
+
+.payment-failure-note span {
+  margin-top: 6px;
+}
+
 .payment-feedback {
   display: flex;
   align-items: start;
@@ -1669,6 +1688,12 @@ button {
 .payment-feedback.is-info {
   background: #f6faff;
   border-color: rgba(27, 102, 255, 0.12);
+}
+
+.payment-feedback.is-warning {
+  background: linear-gradient(180deg, rgba(255, 247, 237, 0.98), rgba(255, 252, 247, 0.96));
+  border-color: rgba(216, 122, 18, 0.18);
+  color: #8a5300;
 }
 
 .payment-feedback.is-working {

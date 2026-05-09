@@ -26,6 +26,7 @@ const state = {
   analysisProgress: null,
   analysisRunId: 0,
   upiFallbackTimerId: null,
+  externalPaymentAttempt: null,
   scrollAnimationFrameId: null,
   scrollTargetTimerId: null,
 };
@@ -150,6 +151,7 @@ function hasBlackWhiteConversionTools() {
 }
 
 function bindEvents() {
+  document.addEventListener("visibilitychange", handlePaymentAppVisibilityChange);
   elements.fileInput.addEventListener("change", handleFileSelection);
   elements.bwModeToggle.addEventListener("change", handleBlackWhiteModeChange);
   elements.copies.addEventListener("input", handleCopiesChange);
@@ -1025,6 +1027,10 @@ function launchUpiApp() {
   }
 
   state.currentOrder.payment.upiLink = buildUpiLink();
+  registerExternalPaymentAttempt({
+    appKey: "generic-upi",
+    appLabel: elements.paymentApp.value.trim() || "UPI app",
+  });
   openUpiLink(state.currentOrder.payment.upiLink);
 }
 
@@ -1047,11 +1053,60 @@ function launchNamedUpiApp(appKey) {
 
   elements.paymentApp.value = appConfig.label;
   state.currentOrder.payment.upiLink = buildUpiLink();
+  registerExternalPaymentAttempt({
+    appKey,
+    appLabel: appConfig.label,
+  });
   showPaymentFeedback(
     `${isIosDevice() ? `Opening ${appConfig.label} on iPhone. After payment, switch back to Safari and submit the transaction ID and your UPI ID.` : `Opening ${appConfig.label}. Complete the payment there, then return here and submit the transaction ID and your UPI ID.`} If the app shows a payment error, use the QR code or the main UPI button and then continue below with the same order amount.`,
     "info"
   );
   openUpiLink(buildPreferredUpiLaunchLink(appKey), state.currentOrder.payment.upiLink);
+}
+
+function registerExternalPaymentAttempt({ appKey, appLabel }) {
+  state.externalPaymentAttempt = {
+    appKey: String(appKey || ""),
+    appLabel: String(appLabel || "UPI app"),
+    leftPage: false,
+    returned: false,
+    launchedAt: Date.now(),
+  };
+}
+
+function handlePaymentAppVisibilityChange() {
+  const attempt = state.externalPaymentAttempt;
+  if (!attempt || state.paymentMethod !== "upi") {
+    return;
+  }
+
+  if (document.hidden) {
+    attempt.leftPage = true;
+    return;
+  }
+
+  if (!attempt.leftPage || attempt.returned || elements.paymentSection.classList.contains("is-hidden")) {
+    return;
+  }
+
+  attempt.returned = true;
+  showPaymentFeedback(
+    buildReturnedFromPaymentAppMessage(attempt),
+    isGooglePayAttempt(attempt) ? "warning" : "info"
+  );
+}
+
+function buildReturnedFromPaymentAppMessage(attempt) {
+  if (isGooglePayAttempt(attempt)) {
+    return `Back from Google Pay. If Google Pay said "Your payment has not been debited" or that your bank account transaction limit was exceeded, the payment failed and no money was taken. Switch to another bank account or UPI app and retry. Only enter the transaction ID below if the payment succeeded.`;
+  }
+
+  return `Back from ${attempt.appLabel || "your UPI app"}. If the app showed that the payment failed or the amount was not debited, do not confirm payment yet. Retry with another bank account, use another UPI app, or scan the QR code. Only enter the transaction ID below if the payment succeeded.`;
+}
+
+function isGooglePayAttempt(attempt) {
+  return /gpay|google pay/i.test(String(attempt?.appKey || "")) ||
+    /google pay/i.test(String(attempt?.appLabel || ""));
 }
 
 async function copyUpiId() {
@@ -1366,6 +1421,7 @@ function resetPendingPaymentSession() {
   state.paymentExpiresAt = null;
   state.timerExpired = false;
   window.clearTimeout(state.upiFallbackTimerId);
+  state.externalPaymentAttempt = null;
   setPaymentSessionState(false);
   elements.paymentSection.classList.add("is-hidden");
   elements.paymentSuccess.classList.add("is-hidden");
@@ -1833,8 +1889,8 @@ function showDefaultPaymentFeedback() {
   const pricing = buildPricingSummary();
   showPaymentFeedback(
     pricing?.convertedToBw
-      ? "After payment, submit the exact transaction ID and payer UPI ID. We will verify the order and attach the B/W print-ready file."
-      : "After payment, submit the exact transaction ID and payer UPI ID to verify the order and open the receipt below.",
+      ? "After payment, submit the exact transaction ID and payer UPI ID. If the UPI app said the amount was not debited or your bank limit was exceeded, do not confirm yet."
+      : "After payment, submit the exact transaction ID and payer UPI ID to verify the order and open the receipt below. If the payment app said the amount was not debited, retry first instead of confirming.",
     "info"
   );
 }
@@ -1846,6 +1902,7 @@ function showPaymentFeedback(message, variant = "info") {
 
   const iconByVariant = {
     info: "fa-circle-info",
+    warning: "fa-triangle-exclamation",
     working: "fa-spinner fa-spin",
     error: "fa-circle-exclamation",
     success: "fa-circle-check",
