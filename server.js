@@ -5,6 +5,7 @@ const { execFile } = require("child_process");
 const { promisify } = require("util");
 const nodemailer = require("nodemailer");
 const PDFDocument = require("pdfkit");
+const QRCode = require("qrcode");
 
 const execFileAsync = promisify(execFile);
 
@@ -150,6 +151,50 @@ function serveFile(response, pathname) {
     });
     response.end(data);
   });
+}
+
+async function handleUpiQrRequest(response, requestUrl) {
+  const qrPayload = sanitizeText(requestUrl.searchParams.get("data"));
+
+  if (!qrPayload) {
+    sendJson(response, 400, {
+      success: false,
+      error: "Missing UPI QR payload.",
+    });
+    return;
+  }
+
+  if (qrPayload.length > 4096) {
+    sendJson(response, 400, {
+      success: false,
+      error: "UPI QR payload is too large.",
+    });
+    return;
+  }
+
+  try {
+    const svg = await QRCode.toString(qrPayload, {
+      type: "svg",
+      width: 220,
+      margin: 1,
+      errorCorrectionLevel: "H",
+      color: {
+        dark: "#10203a",
+        light: "#ffffff",
+      },
+    });
+
+    response.writeHead(200, {
+      "Content-Type": "image/svg+xml; charset=utf-8",
+      "Cache-Control": "no-store",
+    });
+    response.end(svg);
+  } catch (error) {
+    sendJson(response, 500, {
+      success: false,
+      error: "Unable to generate the UPI QR code.",
+    });
+  }
 }
 
 function readJsonBody(request) {
@@ -1443,7 +1488,8 @@ function buildPublicConfig() {
 }
 
 const server = http.createServer(async (request, response) => {
-  const { pathname } = new URL(request.url, `http://${request.headers.host}`);
+  const requestUrl = new URL(request.url, `http://${request.headers.host}`);
+  const { pathname } = requestUrl;
 
   if (request.method === "GET" && pathname === "/config.js") {
     response.writeHead(200, {
@@ -1478,6 +1524,11 @@ const server = http.createServer(async (request, response) => {
         error: error.message || "Unable to process request.",
       });
     }
+    return;
+  }
+
+  if (request.method === "GET" && pathname === "/api/upi/qr") {
+    await handleUpiQrRequest(response, requestUrl);
     return;
   }
 

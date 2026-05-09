@@ -859,6 +859,12 @@ function buildOrderReferenceUrl() {
   }
 }
 
+function buildUpiQrImageUrl(upiLink) {
+  const qrUrl = new URL("/api/upi/qr", window.location.origin);
+  qrUrl.searchParams.set("data", upiLink);
+  return qrUrl.toString();
+}
+
 function buildAndroidUpiIntent(packageName) {
   return `intent://pay?${buildUpiParams().toString()}#Intent;scheme=upi;package=${packageName};end`;
 }
@@ -957,19 +963,25 @@ function createUpiQr() {
     upiLink,
   };
 
-  try {
-    new window.QRCode(elements.qrCode, {
-      text: upiLink,
-      width: 220,
-      height: 220,
-      colorDark: "#10203a",
-      colorLight: "#ffffff",
-      correctLevel: window.QRCode.CorrectLevel.H,
-    });
-  } catch (error) {
+  if (!upiLink) {
     elements.qrCode.innerHTML = "<p>QR generation failed. Use the UPI button instead.</p>";
     showToast("QR code could not be generated.", true);
+    return;
   }
+
+  const qrImage = document.createElement("img");
+  qrImage.src = buildUpiQrImageUrl(upiLink);
+  qrImage.alt = "UPI payment QR code";
+  qrImage.width = 220;
+  qrImage.height = 220;
+  qrImage.decoding = "async";
+
+  qrImage.addEventListener("error", () => {
+    elements.qrCode.innerHTML = "<p>QR generation failed. Use the UPI button instead.</p>";
+    showToast("QR code could not be generated.", true);
+  });
+
+  elements.qrCode.appendChild(qrImage);
 }
 
 function startPaymentTimer() {
