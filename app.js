@@ -3,6 +3,7 @@ const APP_CONFIG = window.APP_CONFIG || {
   businessEmail: "owner@example.com",
   businessPhone: "+919345574203",
   upiId: "rahulsiva190@okicici",
+  upiPayeeName: "Rahul Siva",
   upiMerchantCode: "",
   maxForwardablePdfMb: 18,
   pricing: { bw: 1, color: 10 },
@@ -94,6 +95,7 @@ function wireElements() {
     "timerChip",
     "qrCode",
     "upiIdText",
+    "upiPayeeNameText",
     "gpayLaunchButton",
     "phonePeLaunchButton",
     "upiLaunchButton",
@@ -134,6 +136,9 @@ function applyPublicConfig() {
   elements.priceColorDisplay.textContent = formatCurrency(APP_CONFIG.pricing.color);
   elements.paymentWindowDisplay.textContent = `${APP_CONFIG.paymentTimeoutMinutes} minutes`;
   elements.upiIdText.textContent = APP_CONFIG.upiId;
+  if (elements.upiPayeeNameText) {
+    elements.upiPayeeNameText.textContent = APP_CONFIG.upiPayeeName || APP_CONFIG.businessName;
+  }
   elements.supportPhoneLink.href = `tel:${normalisePhone(APP_CONFIG.businessPhone)}`;
   elements.supportPhoneLink.textContent = `Call ${APP_CONFIG.businessPhone}`;
   elements.contactPhoneText.textContent = APP_CONFIG.businessPhone;
@@ -829,11 +834,9 @@ function buildUpiParams() {
 
   const params = {
     pa: APP_CONFIG.upiId,
-    pn: APP_CONFIG.businessName,
+    pn: APP_CONFIG.upiPayeeName || APP_CONFIG.businessName,
     am: state.currentOrder.amount.toFixed(2),
     cu: "INR",
-    tn: `Print order ${state.currentOrder.orderId}`,
-    tr: state.currentOrder.orderId,
   };
 
   if (APP_CONFIG.upiMerchantCode) {

@@ -41,6 +41,7 @@ const BUSINESS_EMAIL = sanitizeText(process.env.BUSINESS_EMAIL) || sanitizeText(
 const ORDER_NOTIFICATION_EMAIL = process.env.ORDER_NOTIFICATION_EMAIL || BUSINESS_EMAIL;
 const BUSINESS_PHONE = process.env.BUSINESS_PHONE || "+919345574203";
 const UPI_ID = process.env.UPI_ID || "rahulsiva190@okicici";
+const UPI_PAYEE_NAME = sanitizeText(process.env.UPI_PAYEE_NAME) || "Rahul Siva";
 const UPI_MERCHANT_CODE = sanitizeText(process.env.UPI_MERCHANT_CODE);
 const PRICE_BW = Number(process.env.PRICE_BW || 1);
 const PRICE_COLOR = Number(process.env.PRICE_COLOR || 10);
@@ -1476,6 +1477,7 @@ function buildPublicConfig() {
     businessEmail: BUSINESS_EMAIL,
     businessPhone: BUSINESS_PHONE,
     upiId: UPI_ID,
+    upiPayeeName: UPI_PAYEE_NAME,
     upiMerchantCode: UPI_MERCHANT_CODE,
     maxForwardablePdfMb: MAX_FORWARDABLE_PDF_MB,
     pricing: {
