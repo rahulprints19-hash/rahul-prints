@@ -1525,9 +1525,58 @@ button {
     linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(245, 249, 255, 0.98));
 }
 
+.checkout-card {
+  display: grid;
+  gap: 18px;
+}
+
 .qr-title {
   margin-top: 0;
   font-weight: 800;
+}
+
+.gateway-card {
+  min-height: 278px;
+  display: grid;
+  align-content: center;
+  gap: 12px;
+  border-radius: 22px;
+  border: 1px solid var(--line);
+  padding: 24px;
+  background:
+    radial-gradient(circle at top right, rgba(27, 102, 255, 0.12), transparent 38%),
+    linear-gradient(180deg, #f7fbff, #ffffff);
+}
+
+.gateway-card h4 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.gateway-card p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.72;
+}
+
+.gateway-badge {
+  display: inline-flex;
+  width: max-content;
+  align-items: center;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(27, 102, 255, 0.08);
+  color: var(--primary-dark);
+  font-size: 0.8rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.gateway-meta {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.6;
 }
 
 .qr-code {
@@ -1630,6 +1679,10 @@ button {
   margin-top: 3px;
   color: var(--muted);
   line-height: 1.45;
+}
+
+.legacy-upi-shell[hidden] {
+  display: none !important;
 }
 
 .status-note {
@@ -2329,6 +2382,11 @@ body.has-active-payment-session .mobile-order-bar {
 
   .payment-layout {
     gap: 16px;
+  }
+
+  .gateway-card {
+    min-height: 220px;
+    padding: 20px;
   }
 
   .qr-code {

@@ -2,6 +2,8 @@ const APP_CONFIG = window.APP_CONFIG || {
   businessName: "Rahul Prints",
   businessEmail: "owner@example.com",
   businessPhone: "+919345574203",
+  razorpayKeyId: "",
+  razorpayEnabled: false,
   upiId: "rahulsiva190@okicici",
   upiPayeeName: "Rahul Siva",
   upiMerchantCode: "",
@@ -24,6 +26,8 @@ const state = {
   processedBwUpload: null,
   processedBwPromise: null,
   isAnalyzingPdf: false,
+  isLaunchingRazorpay: false,
+  isSubmittingPayment: false,
   analysisProgress: null,
   analysisRunId: 0,
   upiFallbackTimerId: null,
@@ -98,6 +102,8 @@ function wireElements() {
     "orderIdDisplay",
     "paymentTimer",
     "timerChip",
+    "razorpayLaunchButton",
+    "razorpayAssistText",
     "qrCode",
     "upiIdText",
     "upiPayeeNameText",
@@ -149,6 +155,11 @@ function applyPublicConfig() {
   if (elements.upiPayeeNameText) {
     elements.upiPayeeNameText.textContent = APP_CONFIG.upiPayeeName || APP_CONFIG.businessName;
   }
+  if (elements.razorpayAssistText) {
+    elements.razorpayAssistText.textContent = APP_CONFIG.razorpayEnabled
+      ? "The receipt is generated only after Razorpay returns a verified successful payment."
+      : "Razorpay is not configured yet. Add Razorpay keys on the server before accepting online payments.";
+  }
   elements.supportPhoneLink.href = `tel:${normalisePhone(APP_CONFIG.businessPhone)}`;
   elements.supportPhoneLink.textContent = `Call ${APP_CONFIG.businessPhone}`;
   elements.contactPhoneText.textContent = APP_CONFIG.businessPhone;
@@ -160,6 +171,58 @@ function configurePdfWorker() {
     window.pdfjsLib.GlobalWorkerOptions.workerSrc =
       "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
   }
+}
+
+function isRazorpayReady() {
+  return Boolean(APP_CONFIG.razorpayEnabled && APP_CONFIG.razorpayKeyId);
+}
+
+function refreshRazorpayButton() {
+  if (!elements.razorpayLaunchButton) {
+    return;
+  }
+
+  const disabled =
+    !state.currentOrder ||
+    state.timerExpired ||
+    state.isLaunchingRazorpay ||
+    state.isSubmittingPayment ||
+    !isRazorpayReady();
+
+  elements.razorpayLaunchButton.disabled = disabled;
+  elements.razorpayLaunchButton.classList.toggle("is-loading", state.isLaunchingRazorpay || state.isSubmittingPayment);
+  elements.razorpayLaunchButton.innerHTML =
+    state.isLaunchingRazorpay
+      ? '<span class="btn-spinner" aria-hidden="true"></span> Preparing Secure Checkout'
+      : state.isSubmittingPayment
+        ? '<span class="btn-spinner" aria-hidden="true"></span> Verifying Payment'
+        : '<i class="fas fa-credit-card"></i> Pay Securely with Razorpay';
+}
+
+function prepareRazorpayCheckoutState() {
+  if (!state.currentOrder) {
+    return;
+  }
+
+  state.currentOrder.payment = {
+    method: "razorpay",
+    app: "Razorpay Checkout",
+    transactionId: "",
+    payerUpiId: "",
+    paidAt: "",
+    razorpayOrderId: "",
+    razorpayPaymentId: "",
+    razorpaySignature: "",
+    verificationStatus: "checkout-pending",
+  };
+
+  if (elements.razorpayAssistText) {
+    elements.razorpayAssistText.textContent = isRazorpayReady()
+      ? "Tap the button above to open Razorpay Checkout. The receipt is generated automatically after payment verification."
+      : "Razorpay is not configured yet. Add Razorpay keys on the server before accepting online payments.";
+  }
+
+  refreshRazorpayButton();
 }
 
 function hasBlackWhiteConversionTools() {
@@ -175,6 +238,7 @@ function bindEvents() {
   elements.copiesDecreaseButton.addEventListener("click", () => adjustCopies(-1));
   elements.copiesIncreaseButton.addEventListener("click", () => adjustCopies(1));
   elements.uploadForm.addEventListener("submit", handleOrderReview);
+  elements.razorpayLaunchButton.addEventListener("click", launchRazorpayCheckout);
   elements.paymentConfirmationForm.addEventListener("submit", confirmUpiPayment);
   elements.paymentApp.addEventListener("change", showDefaultPaymentFeedback);
   elements.transactionId.addEventListener("input", handleTransactionIdInput);
@@ -356,7 +420,7 @@ function handleCopiesChange() {
       resetConfirmationFields: true,
       keepScroll: true,
     });
-    showToast("Copies changed. The detected pricing and UPI amount were updated automatically.");
+    showToast("Copies changed. The detected pricing and payment amount were updated automatically.");
   } catch (error) {
     resetPendingPaymentSession();
     showToast(error.message, true);
@@ -696,6 +760,8 @@ function renderPaymentSession({ restartTimer, resetConfirmationFields, keepScrol
   elements.paymentSection.classList.remove("is-hidden");
   elements.paymentSuccess.classList.add("is-hidden");
   elements.timerChip.classList.remove("is-expired");
+  state.isSubmittingPayment = false;
+  state.isLaunchingRazorpay = false;
 
   if (resetConfirmationFields) {
     elements.paymentApp.value = "";
@@ -716,8 +782,7 @@ function renderPaymentSession({ restartTimer, resetConfirmationFields, keepScrol
   setPaymentSessionState(true);
   setPaymentProgress("pay");
   setPaymentMethod(state.paymentMethod || "upi");
-  createUpiQr();
-  updatePaymentAttemptUi();
+  prepareRazorpayCheckoutState();
 
   if (restartTimer && state.paymentMethod === "upi") {
     startPaymentTimer();
@@ -1168,6 +1233,7 @@ function updateTimerDisplay() {
   state.timerExpired = true;
   window.clearInterval(state.timerIntervalId);
   elements.timerChip.classList.add("is-expired");
+  refreshRazorpayButton();
   elements.gpayLaunchButton.disabled = true;
   elements.phonePeLaunchButton.disabled = true;
   elements.paytmLaunchButton.disabled = true;
@@ -1181,7 +1247,7 @@ function updateTimerDisplay() {
     });
   }
   showPaymentFeedback(
-    "Payment session expired. Review the order again to generate a fresh amount and QR code before confirming.",
+    "Payment session expired. Review the order again to generate a fresh amount and Razorpay checkout session before confirming.",
     "error"
   );
 }
@@ -1195,7 +1261,151 @@ function setPaymentMethod(method) {
   elements.codPanel.classList.toggle("is-hidden", method !== "cod");
   elements.timerChip.classList.toggle("is-hidden", method !== "upi");
   showDefaultPaymentFeedback();
+  refreshRazorpayButton();
   updatePaymentAttemptUi();
+}
+
+async function createRazorpayOrder() {
+  const response = await fetch("/api/payments/razorpay/order", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(state.currentOrder),
+  });
+
+  const result = await readJsonResponse(response);
+  if (!response.ok || !result.success) {
+    throw new Error(
+      result.error ||
+      result.message ||
+      "Could not start Razorpay checkout right now."
+    );
+  }
+
+  return result;
+}
+
+async function launchRazorpayCheckout() {
+  if (!state.currentOrder) {
+    showPaymentFeedback("Please review the order details first so the correct payment amount is generated.", "error");
+    return;
+  }
+
+  if (state.timerExpired) {
+    showPaymentFeedback("The payment timer expired. Review the order again to generate a fresh amount.", "error");
+    return;
+  }
+
+  if (!isRazorpayReady()) {
+    showPaymentFeedback("Razorpay is not configured on the server yet. Add the Razorpay keys and try again.", "error");
+    return;
+  }
+
+  if (typeof window.Razorpay !== "function") {
+    showPaymentFeedback("The Razorpay checkout script is still loading. Please wait a moment and try again.", "warning");
+    return;
+  }
+
+  if (state.isLaunchingRazorpay) {
+    showPaymentFeedback("Secure checkout is already being prepared. Please wait a moment.", "info");
+    return;
+  }
+
+  state.isLaunchingRazorpay = true;
+  refreshRazorpayButton();
+
+  let checkoutOpened = false;
+  try {
+    showPaymentFeedback("Preparing secure Razorpay checkout...", "working");
+    const checkout = await createRazorpayOrder();
+
+    state.currentOrder.payment = {
+      ...state.currentOrder.payment,
+      method: "razorpay",
+      app: "Razorpay Checkout",
+      razorpayOrderId: checkout.razorpayOrderId,
+      verificationStatus: "checkout-opened",
+    };
+
+    const options = {
+      key: checkout.keyId,
+      amount: checkout.amount,
+      currency: checkout.currency || "INR",
+      name: APP_CONFIG.businessName,
+      description: `Rahul Prints order ${state.currentOrder.orderId}`,
+      order_id: checkout.razorpayOrderId,
+      prefill: {
+        name: state.currentOrder.customer.name,
+        email: state.currentOrder.customer.email,
+        contact: normalisePhone(state.currentOrder.customer.phone),
+      },
+      notes: {
+        appOrderId: state.currentOrder.orderId,
+        documentName: state.currentOrder.document.fileName,
+      },
+      theme: {
+        color: "#1958ff",
+      },
+      modal: {
+        ondismiss: () => {
+          state.isLaunchingRazorpay = false;
+          refreshRazorpayButton();
+          showPaymentFeedback(
+            "Razorpay checkout was closed before the payment finished. You can reopen it and try again.",
+            "warning"
+          );
+        },
+      },
+      handler: async (response) => {
+        state.isLaunchingRazorpay = false;
+        refreshRazorpayButton();
+        state.currentOrder.payment = {
+          ...state.currentOrder.payment,
+          method: "razorpay",
+          app: "Razorpay Checkout",
+          transactionId: response.razorpay_payment_id || "",
+          paidAt: new Date().toISOString(),
+          razorpayOrderId: checkout.razorpayOrderId,
+          razorpayPaymentId: response.razorpay_payment_id || "",
+          razorpaySignature: response.razorpay_signature || "",
+          verificationStatus: "checkout-success",
+        };
+
+        showPaymentFeedback("Payment received from Razorpay. Verifying the payment and generating your receipt.", "working");
+        await submitOrderConfirmation();
+      },
+    };
+
+    const razorpay = new window.Razorpay(options);
+    if (typeof razorpay.on === "function") {
+      razorpay.on("payment.failed", (event) => {
+        state.isLaunchingRazorpay = false;
+        refreshRazorpayButton();
+        const description = event?.error?.description || event?.error?.reason || event?.error?.code || "";
+        showPaymentFeedback(
+          description
+            ? `Razorpay reported that the payment failed: ${description}`
+            : "Razorpay reported that the payment was not completed. Please try again.",
+          "error"
+        );
+      });
+    }
+
+    showPaymentFeedback(
+      "Razorpay checkout is opening. Complete the payment there, then stay on this page while we verify it.",
+      "info"
+    );
+    razorpay.open();
+    checkoutOpened = true;
+  } catch (error) {
+    showPaymentFeedback(getFriendlyConfirmationErrorMessage(error), "error");
+  } finally {
+    if (!checkoutOpened) {
+      state.isLaunchingRazorpay = false;
+      refreshRazorpayButton();
+    }
+  }
 }
 
 function launchUpiApp() {
@@ -1561,8 +1771,8 @@ function handleSuccessfulConfirmation(result) {
     : hasDeliveryWarnings
       ? "Your receipt is ready. Automatic owner/customer delivery needs a retry, but the order has been safely recorded on the server."
       : isBwOnly
-        ? "Your payment is verified, the B/W print-ready file is ready, and the receipt will download automatically."
-        : "Your payment is verified, the receipt is ready, and the print desk has received the customer PDF.";
+        ? "Your Razorpay payment is verified, the B/W print-ready file is ready, and the receipt will download automatically."
+        : "Your Razorpay payment is verified, the receipt is ready, and the print desk has received the customer PDF.";
 
   const bytes = Uint8Array.from(atob(result.invoiceBase64), (char) => char.charCodeAt(0));
   state.invoiceBlob = new Blob([bytes], { type: "application/pdf" });
@@ -1581,6 +1791,7 @@ function handleSuccessfulConfirmation(result) {
 function renderDeliveryStatus(result) {
   const receipt = result.receipt || {};
   const currentOrder = state.currentOrder || {};
+  const paymentItemsMarkup = buildReceiptPaymentItems(receipt, result, currentOrder);
   const verificationItems = (result.verification?.checks || [])
     .map((item) => `<li>${escapeHtml(item)}</li>`)
     .join("");
@@ -1610,7 +1821,7 @@ function renderDeliveryStatus(result) {
       <article class="receipt-overview-card">
         <span>Date & Time</span>
         <strong>${escapeHtml(formatDateTime(receipt.paidAt || new Date().toISOString()))}</strong>
-        <small>${escapeHtml(receipt.paymentMethod || "UPI")}</small>
+        <small>${escapeHtml(receipt.paymentMethod || "Online Payment")}</small>
       </article>
     </div>
 
@@ -1625,16 +1836,7 @@ function renderDeliveryStatus(result) {
         <span class="status-pill">${escapeHtml(receipt.paymentStatus || "Payment Successful")}</span>
       </div>
       <div class="receipt-grid">
-        ${renderReceiptItem("Customer Name", receipt.customerName || currentOrder.customer?.name || "NA")}
-        ${renderReceiptItem("Email ID", receipt.customerEmail || currentOrder.customer?.email || "NA")}
-        ${renderReceiptItem("UPI ID", receipt.payerUpiId || result.verification?.payerUpiId || "NA")}
-        ${renderReceiptItem("Transaction ID", receipt.transactionId || result.verification?.transactionId || "NA")}
-        ${renderReceiptItem("Number of Copies", String(receipt.copies || currentOrder.document?.copies || "0"))}
-        ${renderReceiptItem("Color Pages Count", String(receipt.colorPages || currentOrder.document?.colorPages || "0"))}
-        ${renderReceiptItem("Black & White Pages Count", String(receipt.bwPages || currentOrder.document?.bwPages || "0"))}
-        ${renderReceiptItem("Total Price", formatCurrency(receipt.totalPrice || result.amount))}
-        ${renderReceiptItem("Payment Status", receipt.paymentStatus || "Payment Successful")}
-        ${renderReceiptItem("Date & Time", formatDateTime(receipt.paidAt || new Date().toISOString()))}
+        ${paymentItemsMarkup}
       </div>
     </section>
 
@@ -1700,6 +1902,8 @@ function downloadInvoice() {
 }
 
 function toggleSubmitting(isSubmitting) {
+  state.isSubmittingPayment = isSubmitting;
+  refreshRazorpayButton();
   elements.gpayLaunchButton.disabled = isSubmitting || state.timerExpired;
   elements.phonePeLaunchButton.disabled = isSubmitting || state.timerExpired;
   elements.paytmLaunchButton.disabled = isSubmitting || state.timerExpired;
@@ -1740,6 +1944,8 @@ function resetPendingPaymentSession() {
   state.currentOrder = null;
   state.paymentExpiresAt = null;
   state.timerExpired = false;
+  state.isLaunchingRazorpay = false;
+  state.isSubmittingPayment = false;
   window.clearTimeout(state.upiFallbackTimerId);
   state.externalPaymentAttempt = null;
   state.upiLaunchCooldownUntil = 0;
@@ -1754,6 +1960,7 @@ function resetPendingPaymentSession() {
   elements.paymentApp.disabled = false;
   elements.transactionId.disabled = false;
   elements.payerUpiId.disabled = false;
+  refreshRazorpayButton();
   clearPaymentFeedback();
   setPaymentProgress("review");
 }
@@ -2141,6 +2348,57 @@ function renderReceiptItem(label, value) {
   `;
 }
 
+function buildReceiptPaymentItems(receipt, result, currentOrder) {
+  if (receipt.paymentMethod === "Cash on Pickup") {
+    return [
+      renderReceiptItem("Customer Name", receipt.customerName || currentOrder.customer?.name || "NA"),
+      renderReceiptItem("Email ID", receipt.customerEmail || currentOrder.customer?.email || "NA"),
+      renderReceiptItem("Payment Mode", "Cash on Pickup"),
+      renderReceiptItem("Payment Status", receipt.paymentStatus || "Payment Pending - Cash on Pickup"),
+      renderReceiptItem("Number of Copies", String(receipt.copies || currentOrder.document?.copies || "0")),
+      renderReceiptItem("Color Pages Count", String(receipt.colorPages || currentOrder.document?.colorPages || "0")),
+      renderReceiptItem("Black & White Pages Count", String(receipt.bwPages || currentOrder.document?.bwPages || "0")),
+      renderReceiptItem("Total Price", formatCurrency(receipt.totalPrice || result.amount)),
+      renderReceiptItem("Date & Time", formatDateTime(receipt.paidAt || new Date().toISOString())),
+    ].join("");
+  }
+
+  if (receipt.gatewayProvider === "Razorpay" || /razorpay/i.test(receipt.paymentMethod || "")) {
+    return [
+      renderReceiptItem("Customer Name", receipt.customerName || currentOrder.customer?.name || "NA"),
+      renderReceiptItem("Email ID", receipt.customerEmail || currentOrder.customer?.email || "NA"),
+      renderReceiptItem(
+        "Razorpay Payment ID",
+        receipt.gatewayPaymentId || receipt.transactionId || result.verification?.gatewayPaymentId || "NA"
+      ),
+      renderReceiptItem(
+        "Razorpay Order ID",
+        receipt.gatewayOrderId || result.verification?.gatewayOrderId || "NA"
+      ),
+      renderReceiptItem("Payment Method", receipt.gatewayMethod || "Online Payment"),
+      renderReceiptItem("Number of Copies", String(receipt.copies || currentOrder.document?.copies || "0")),
+      renderReceiptItem("Color Pages Count", String(receipt.colorPages || currentOrder.document?.colorPages || "0")),
+      renderReceiptItem("Black & White Pages Count", String(receipt.bwPages || currentOrder.document?.bwPages || "0")),
+      renderReceiptItem("Total Price", formatCurrency(receipt.totalPrice || result.amount)),
+      renderReceiptItem("Payment Status", receipt.paymentStatus || "Payment Successful"),
+      renderReceiptItem("Date & Time", formatDateTime(receipt.paidAt || new Date().toISOString())),
+    ].join("");
+  }
+
+  return [
+    renderReceiptItem("Customer Name", receipt.customerName || currentOrder.customer?.name || "NA"),
+    renderReceiptItem("Email ID", receipt.customerEmail || currentOrder.customer?.email || "NA"),
+    renderReceiptItem("UPI ID", receipt.payerUpiId || result.verification?.payerUpiId || "NA"),
+    renderReceiptItem("Transaction ID", receipt.transactionId || result.verification?.transactionId || "NA"),
+    renderReceiptItem("Number of Copies", String(receipt.copies || currentOrder.document?.copies || "0")),
+    renderReceiptItem("Color Pages Count", String(receipt.colorPages || currentOrder.document?.colorPages || "0")),
+    renderReceiptItem("Black & White Pages Count", String(receipt.bwPages || currentOrder.document?.bwPages || "0")),
+    renderReceiptItem("Total Price", formatCurrency(receipt.totalPrice || result.amount)),
+    renderReceiptItem("Payment Status", receipt.paymentStatus || "Payment Successful"),
+    renderReceiptItem("Date & Time", formatDateTime(receipt.paidAt || new Date().toISOString())),
+  ].join("");
+}
+
 function getFriendlyPdfAnalysisErrorMessage(error) {
   const message = String(error?.message || "").trim();
   if (!message) {
@@ -2207,49 +2465,22 @@ function showDefaultPaymentFeedback() {
 
   if (state.timerExpired) {
     showPaymentFeedback(
-      "Payment session expired. Review the order again to generate a fresh amount and QR code.",
+      "Payment session expired. Review the order again to generate a fresh amount and Razorpay checkout session.",
       "error"
     );
     return;
   }
 
-  const attempt = state.externalPaymentAttempt;
-  if (attempt?.returned) {
-    if (attempt.status === "success-selected") {
-      showPaymentFeedback(
-        `Payment marked as successful in ${attempt.appLabel || "your UPI app"}. Enter the exact transaction ID and your UPI ID below to verify the order.`,
-        "success"
-      );
-      return;
-    }
-    if (attempt.status === "failed-selected") {
-      showPaymentFeedback(
-        `No money was captured in ${attempt.appLabel || "the UPI app"}. Retry with the QR code, another bank account, or another UPI app before confirming the order.`,
-        "error"
-      );
-      return;
-    }
-    if (attempt.status === "pending-selected") {
-      showPaymentFeedback(
-        `The payment is still pending in ${attempt.appLabel || "the UPI app"}. Wait for a final success screen and transaction ID before confirming the order.`,
-        "warning"
-      );
-      return;
-    }
-    if (requiresManualOutcomeSelection(attempt)) {
-      showPaymentFeedback(
-        `Back from ${attempt.appLabel || "your UPI app"}. Choose whether the payment succeeded, failed, or is still pending before confirming the order.`,
-        "warning"
-      );
-      return;
-    }
+  if (!isRazorpayReady()) {
+    showPaymentFeedback(
+      "Razorpay is not configured yet. Add RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET on the server before accepting online payments.",
+      "error"
+    );
+    return;
   }
 
-  const pricing = buildPricingSummary();
   showPaymentFeedback(
-    pricing?.convertedToBw
-      ? "After payment, submit the exact transaction ID and payer UPI ID. If the UPI app said the amount was not debited or your bank limit was exceeded, that means the bank declined the payment and you should retry instead of confirming."
-      : "After payment, submit the exact transaction ID and payer UPI ID to verify the order and open the receipt below. If the payment app said the amount was not debited, that means no payment was captured and you should retry first instead of confirming.",
+    "Tap Pay Securely with Razorpay to open checkout. The customer can choose UPI, cards, netbanking, or wallets there, and Rahul Prints will generate the receipt only after the payment is verified on the server.",
     "info"
   );
 }
