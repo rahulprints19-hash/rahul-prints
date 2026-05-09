@@ -875,10 +875,6 @@ function buildUpiQrImageUrl(upiLink) {
   return qrUrl.toString();
 }
 
-function buildAndroidUpiIntent(packageName) {
-  return `intent://pay?${buildUpiParams().toString()}#Intent;scheme=upi;package=${packageName};end`;
-}
-
 function createPaymentAttemptId() {
   const stamp = Date.now();
   const random = Math.random().toString(36).slice(2, 8).toUpperCase();
@@ -1048,7 +1044,9 @@ function buildPreferredUpiLaunchLink(appKey) {
   }
 
   if (isAndroidDevice()) {
-    return buildAndroidUpiIntent(appConfig.androidPackage);
+    // Some Android payment apps reject package-forced intent:// launches even when the
+    // same payment succeeds from a normal upi:// handoff or QR scan.
+    return buildUpiLink();
   }
 
   if (appKey === "gpay") {
@@ -1259,7 +1257,9 @@ function launchNamedUpiApp(appKey) {
   syncPaymentAttemptStart(state.externalPaymentAttempt);
   updatePaymentAttemptUi();
   showPaymentFeedback(
-    `${isIosDevice() ? `Opening ${appConfig.label} on iPhone. After payment, switch back to Safari and submit the transaction ID and your UPI ID.` : `Opening ${appConfig.label}. Complete the payment there, then return here and submit the transaction ID and your UPI ID.`} If ${appConfig.label} says the amount was not debited, the payment did not go through. Return here without confirming and retry with the QR code, another bank account, or another UPI app.`,
+    `${isIosDevice()
+      ? `Opening ${appConfig.label} on iPhone. After payment, switch back to Safari and submit the transaction ID and your UPI ID.`
+      : `Opening a standard UPI payment request for better Android compatibility. If your phone asks which app to use, choose ${appConfig.label}, complete the payment there, then return here and submit the transaction ID and your UPI ID.`} If ${appConfig.label} says the amount was not debited, the payment did not go through. Return here without confirming and retry with the QR code, another bank account, or another UPI app.`,
     "info"
   );
   openUpiLink(buildPreferredUpiLaunchLink(appKey), state.currentOrder.payment.upiLink);
