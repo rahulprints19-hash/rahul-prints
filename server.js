@@ -22,6 +22,7 @@ if (typeof process.loadEnvFile === "function") {
 const ROOT = __dirname;
 const DATA_DIR = path.join(ROOT, "data");
 const ORDERS_FILE = path.join(DATA_DIR, "orders.json");
+const PAYMENT_ATTEMPTS_FILE = path.join(DATA_DIR, "payment-attempts.json");
 const TEMP_UPLOAD_DIR = path.join(DATA_DIR, "tmp");
 const ORDER_ARTIFACTS_DIR = path.join(DATA_DIR, "artifacts");
 const PDF_ANALYSIS_SCRIPT = path.join(ROOT, "pdf_analysis.py");
@@ -77,6 +78,20 @@ const CONTENT_TYPES = {
   ".json": "application/json; charset=utf-8",
   ".txt": "text/plain; charset=utf-8",
 };
+const PAYMENT_ATTEMPT_STATUSES = new Set([
+  "initiated",
+  "launching",
+  "app-opened",
+  "returned",
+  "success-selected",
+  "failed-selected",
+  "pending-selected",
+  "confirmation-submitted",
+  "confirmed",
+  "confirmation-error",
+  "expired",
+  "cancelled",
+]);
 
 let transporter = null;
 const smtpTransportOptions = buildSmtpTransportOptions();
@@ -111,8 +126,8 @@ if (MAIL_PROVIDER === "smtp" && smtpTransportOptions) {
   console.warn("Email delivery is not configured. Set MAIL_PROVIDER to mailjet or smtp before deploying.");
 }
 
-ensureOrdersStore().catch((error) => {
-  console.warn("Order store initialization failed:", error.message);
+Promise.all([ensureOrdersStore(), ensurePaymentAttemptsStore()]).catch((error) => {
+  console.warn("Data store initialization failed:", error.message);
 });
 
 function sendJson(response, statusCode, payload) {
@@ -194,6 +209,36 @@ async function handleUpiQrRequest(response, requestUrl) {
     sendJson(response, 500, {
       success: false,
       error: "Unable to generate the UPI QR code.",
+    });
+  }
+}
+
+async function handlePaymentAttemptStart(response, payload) {
+  try {
+    const record = await upsertPaymentAttemptRecord(payload);
+    sendJson(response, 200, {
+      success: true,
+      attempt: record,
+    });
+  } catch (error) {
+    sendJson(response, error.statusCode || 400, {
+      success: false,
+      error: error.message || "Could not register the payment attempt.",
+    });
+  }
+}
+
+async function handlePaymentAttemptUpdate(response, payload) {
+  try {
+    const updated = await updatePaymentAttemptStatus(payload?.attemptId, payload?.status, payload);
+    sendJson(response, 200, {
+      success: true,
+      attempt: updated,
+    });
+  } catch (error) {
+    sendJson(response, error.statusCode || 400, {
+      success: false,
+      error: error.message || "Could not update the payment attempt.",
     });
   }
 }
@@ -599,6 +644,129 @@ async function saveStoredOrder(orderRecord) {
   await fs.promises.writeFile(ORDERS_FILE, JSON.stringify(orders, null, 2), "utf8");
 }
 
+async function ensurePaymentAttemptsStore() {
+  await fs.promises.mkdir(DATA_DIR, { recursive: true });
+  try {
+    await fs.promises.access(PAYMENT_ATTEMPTS_FILE, fs.constants.F_OK);
+  } catch {
+    await fs.promises.writeFile(PAYMENT_ATTEMPTS_FILE, "[]", "utf8");
+  }
+}
+
+async function loadPaymentAttempts() {
+  await ensurePaymentAttemptsStore();
+  const raw = await fs.promises.readFile(PAYMENT_ATTEMPTS_FILE, "utf8");
+  try {
+    const parsed = JSON.parse(raw || "[]");
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+async function savePaymentAttempts(attempts) {
+  await ensurePaymentAttemptsStore();
+  await fs.promises.writeFile(PAYMENT_ATTEMPTS_FILE, JSON.stringify(attempts, null, 2), "utf8");
+}
+
+function sanitizePaymentAttemptStatus(value) {
+  const normalized = sanitizeText(value).toLowerCase();
+  return PAYMENT_ATTEMPT_STATUSES.has(normalized) ? normalized : "initiated";
+}
+
+function normalisePaymentAttemptPayload(payload) {
+  const record = payload && typeof payload === "object" ? payload : {};
+  const attemptId = sanitizeText(record.attemptId);
+  const orderId = sanitizeText(record.orderId);
+  const status = sanitizePaymentAttemptStatus(record.status);
+  const amount = Number(record.amount || 0);
+
+  if (!attemptId) {
+    const error = new Error("Payment attempt ID is required.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (!orderId) {
+    const error = new Error("Order ID is required for payment attempt tracking.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (!Number.isFinite(amount) || amount <= 0) {
+    const error = new Error("A valid payment amount is required for payment attempt tracking.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  return {
+    attemptId,
+    orderId,
+    appKey: sanitizeText(record.appKey),
+    appLabel: sanitizeText(record.appLabel),
+    amount,
+    upiId: sanitizeText(record.upiId) || UPI_ID,
+    payeeName: sanitizeText(record.payeeName) || UPI_PAYEE_NAME,
+    upiLink: sanitizeText(record.upiLink),
+    status,
+    reason: sanitizeText(record.reason),
+    transactionId: sanitizeTransactionId(record.transactionId),
+    payerUpiId: sanitizeUpiId(record.payerUpiId),
+    createdAt: sanitizeText(record.createdAt) || new Date().toISOString(),
+    updatedAt: sanitizeText(record.updatedAt) || new Date().toISOString(),
+    expiresAt: sanitizeText(record.expiresAt),
+    browserInfo: sanitizeText(record.browserInfo),
+  };
+}
+
+async function upsertPaymentAttemptRecord(payload) {
+  const normalized = normalisePaymentAttemptPayload(payload);
+  const attempts = await loadPaymentAttempts();
+  const existingIndex = attempts.findIndex((entry) => sanitizeText(entry?.attemptId) === normalized.attemptId);
+  const existing = existingIndex >= 0 ? attempts[existingIndex] : null;
+  const nextRecord = {
+    ...(existing || {}),
+    ...normalized,
+    createdAt: existing?.createdAt || normalized.createdAt,
+    updatedAt: new Date().toISOString(),
+  };
+
+  if (existingIndex >= 0) {
+    attempts[existingIndex] = nextRecord;
+  } else {
+    attempts.push(nextRecord);
+  }
+
+  await savePaymentAttempts(attempts);
+  return nextRecord;
+}
+
+async function updatePaymentAttemptStatus(attemptId, status, extras = {}) {
+  const attempts = await loadPaymentAttempts();
+  const index = attempts.findIndex((entry) => sanitizeText(entry?.attemptId) === sanitizeText(attemptId));
+
+  if (index < 0) {
+    const error = new Error("Payment attempt was not found.");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  const existing = attempts[index];
+  attempts[index] = {
+    ...existing,
+    status: sanitizePaymentAttemptStatus(status),
+    appLabel: sanitizeText(extras.appLabel) || existing.appLabel || "",
+    reason: sanitizeText(extras.reason) || existing.reason || "",
+    transactionId: sanitizeTransactionId(extras.transactionId) || existing.transactionId || "",
+    payerUpiId: sanitizeUpiId(extras.payerUpiId) || existing.payerUpiId || "",
+    confirmationMessage: sanitizeText(extras.confirmationMessage) || existing.confirmationMessage || "",
+    updatedAt: new Date().toISOString(),
+  };
+
+  await savePaymentAttempts(attempts);
+  return attempts[index];
+}
+
 function sanitizeOrderDirectoryName(value) {
   return sanitizeText(value, "order").replace(/[^a-z0-9_-]+/gi, "-");
 }
@@ -665,6 +833,9 @@ function normaliseOrder(payload) {
       payerUpiId: sanitizeUpiId(payment.payerUpiId),
       paidAt: sanitizeText(payment.paidAt) || new Date().toISOString(),
       upiLink: sanitizeText(payment.upiLink),
+      attemptId: sanitizeText(payment.attemptId),
+      customerReportedStatus: sanitizePaymentAttemptStatus(payment.customerReportedStatus || "success-selected"),
+      failureReason: sanitizeText(payment.failureReason),
       verificationStatus: sanitizeText(payment.verificationStatus),
     },
   };
@@ -707,6 +878,9 @@ function normaliseOrder(payload) {
     }
     if (!isValidUpiId(normalized.payment.payerUpiId)) {
       errors.push("Payer UPI ID format is invalid.");
+    }
+    if (["failed-selected", "pending-selected"].includes(normalized.payment.customerReportedStatus)) {
+      errors.push("The payment app still shows the payment as failed or pending. Retry the payment before confirming.");
     }
     normalized.payment.verificationStatus = "transaction-details-captured";
   } else if (normalized.payment.method === "cod") {
@@ -928,6 +1102,9 @@ function buildVerificationChecks(order) {
   if (order.payment.method === "upi") {
     checks.push(`Exact UPI transaction ID captured: ${order.payment.transactionId}.`);
     checks.push(`Payer UPI ID captured: ${order.payment.payerUpiId}.`);
+    if (order.payment.attemptId) {
+      checks.push(`Customer payment attempt tracked under ID ${order.payment.attemptId}.`);
+    }
     checks.push("Duplicate transaction ID check passed against previously saved orders.");
   } else {
     checks.push("Cash on pickup was selected instead of UPI.");
@@ -1359,6 +1536,15 @@ async function saveConfirmedOrder(order, uploadedPdf, verificationChecks, outcom
 async function handleOrderConfirmation(response, payload) {
   try {
     const order = normaliseOrder(payload);
+    if (order.payment.method === "upi" && order.payment.attemptId) {
+      await updatePaymentAttemptStatus(order.payment.attemptId, "confirmation-submitted", {
+        appLabel: order.payment.app,
+        transactionId: order.payment.transactionId,
+        payerUpiId: order.payment.payerUpiId,
+      }).catch((error) => {
+        console.warn(`Payment attempt ${order.payment.attemptId} update failed before confirmation:`, error.message);
+      });
+    }
     let uploadedPdf = normaliseUploadedPdf(payload?.upload, order.document.fileName);
     if (order.document.printMode === "bw-only" && order.document.convertedToBw) {
       uploadedPdf = await convertUploadedPdfToBlackWhite(uploadedPdf);
@@ -1399,6 +1585,17 @@ async function handleOrderConfirmation(response, payload) {
       ];
     }
 
+    if (order.payment.method === "upi" && order.payment.attemptId) {
+      await updatePaymentAttemptStatus(order.payment.attemptId, "confirmed", {
+        appLabel: order.payment.app,
+        transactionId: order.payment.transactionId,
+        payerUpiId: order.payment.payerUpiId,
+        confirmationMessage: "Payment confirmed and receipt generated.",
+      }).catch((error) => {
+        console.warn(`Payment attempt ${order.payment.attemptId} final update failed:`, error.message);
+      });
+    }
+
     sendJson(response, 200, {
       success: true,
       orderId: order.orderId,
@@ -1424,6 +1621,7 @@ async function handleOrderConfirmation(response, payload) {
         customerName: order.customer.name,
         customerEmail: order.customer.email,
         merchantUpiId: UPI_ID,
+        paymentAttemptId: order.payment.attemptId,
         payerUpiId: order.payment.payerUpiId,
         transactionId: order.payment.transactionId,
         copies: order.document.copies,
@@ -1443,6 +1641,17 @@ async function handleOrderConfirmation(response, payload) {
         : "Payment completed and invoice generated.",
     });
   } catch (error) {
+    const attemptId = sanitizeText(payload?.payment?.attemptId);
+    if (attemptId) {
+      await updatePaymentAttemptStatus(attemptId, "confirmation-error", {
+        appLabel: sanitizeText(payload?.payment?.app),
+        transactionId: sanitizeTransactionId(payload?.payment?.transactionId),
+        payerUpiId: sanitizeUpiId(payload?.payment?.payerUpiId),
+        confirmationMessage: error.message || "Payment confirmation failed.",
+      }).catch((attemptError) => {
+        console.warn(`Payment attempt ${attemptId} error update failed:`, attemptError.message);
+      });
+    }
     sendJson(response, error.statusCode || 500, {
       success: false,
       error: error.message || "Something went wrong while confirming the order.",
@@ -1513,6 +1722,32 @@ const server = http.createServer(async (request, response) => {
 
   if (request.method === "POST" && pathname === "/api/pdf/analyze") {
     await handlePdfAnalysis(response, request);
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/payment-attempts/start") {
+    try {
+      const payload = await readJsonBody(request);
+      await handlePaymentAttemptStart(response, payload);
+    } catch (error) {
+      sendJson(response, error.statusCode || 400, {
+        success: false,
+        error: error.message || "Could not start the payment attempt.",
+      });
+    }
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/payment-attempts/update") {
+    try {
+      const payload = await readJsonBody(request);
+      await handlePaymentAttemptUpdate(response, payload);
+    } catch (error) {
+      sendJson(response, error.statusCode || 400, {
+        success: false,
+        error: error.message || "Could not update the payment attempt.",
+      });
+    }
     return;
   }
 

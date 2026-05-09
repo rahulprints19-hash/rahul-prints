@@ -12,9 +12,9 @@ services:
       - key: BUSINESS_NAME
         value: Rahul Prints
       - key: BUSINESS_EMAIL
-        value: rahulprints19@gmail.com
+        sync: false
       - key: ORDER_NOTIFICATION_EMAIL
-        value: rahulprints19@gmail.com
+        sync: false
       - key: BUSINESS_PHONE
         value: "+919345574203"
       - key: UPI_ID

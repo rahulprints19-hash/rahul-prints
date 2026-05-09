@@ -1713,6 +1713,57 @@ button {
   color: #0b7a4f;
 }
 
+.payment-attempt-actions {
+  margin-bottom: 18px;
+  padding: 15px 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(17, 32, 56, 0.08);
+  background: #fbfdff;
+}
+
+.payment-attempt-title {
+  margin: 0 0 12px;
+  color: var(--ink);
+  font-size: 0.92rem;
+  font-weight: 800;
+}
+
+.payment-attempt-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.payment-attempt-button {
+  width: 100%;
+  min-height: 46px;
+  border-radius: 14px;
+  border: 1px solid rgba(17, 32, 56, 0.1);
+  background: #ffffff;
+  color: var(--ink);
+  font-weight: 700;
+  touch-action: manipulation;
+}
+
+.payment-attempt-button.is-active {
+  border-color: rgba(27, 102, 255, 0.35);
+  box-shadow: 0 0 0 3px rgba(27, 102, 255, 0.12);
+}
+
+.payment-attempt-success.is-active {
+  border-color: rgba(18, 146, 104, 0.35);
+  box-shadow: 0 0 0 3px rgba(18, 146, 104, 0.12);
+}
+
+.payment-attempt-failed.is-active {
+  border-color: rgba(217, 62, 97, 0.35);
+  box-shadow: 0 0 0 3px rgba(217, 62, 97, 0.12);
+}
+
+.payment-attempt-pending.is-active {
+  border-color: rgba(216, 122, 18, 0.35);
+  box-shadow: 0 0 0 3px rgba(216, 122, 18, 0.12);
+}
+
 .confirm-form {
   margin-top: 8px;
 }

@@ -22,17 +22,29 @@ UPI ID used for the payment QR code and deep link.
 Choose one email provider
 -------------------------
 
-For local testing, use Gmail SMTP:
+For local testing or your own mailbox, use SMTP:
 
 `MAIL_PROVIDER=smtp`
-Uses your Gmail account directly.
+Uses any SMTP account, including Gmail, Zoho, Outlook, Brevo, or your own domain mailbox.
+
+`SMTP_SERVICE`
+Optional shortcut for well-known providers such as `gmail`, `outlook365`, or `zoho`.
+
+`SMTP_HOST`
+Optional direct SMTP server hostname when your provider gives host and port details.
+
+`SMTP_PORT`
+Optional SMTP port, for example `465` or `587`.
+
+`SMTP_SECURE`
+Optional boolean. Set `true` for implicit TLS, usually port `465`, or `false` for STARTTLS, usually port `587`.
 
 `SMTP_USER`
-Gmail address used to send invoices.
+SMTP login used to send invoices.
 
 `SMTP_PASS`
-Gmail App Password for the SMTP account above.
-Do not use your normal Gmail password.
+SMTP password or app password for the account above.
+If you use Gmail, use an App Password instead of your normal Google password.
 
 For Render or other hosts that block SMTP, use Mailjet:
 
@@ -42,6 +54,7 @@ Uses Mailjet's HTTPS API instead of SMTP.
 `MAIL_FROM_EMAIL`
 Verified sender address shown in the From header.
 Avoid free Gmail, Yahoo, Outlook, or Hotmail addresses with Mailjet, because deliverability may fail.
+Keep `BUSINESS_EMAIL` and `ORDER_NOTIFICATION_EMAIL` as your real inbox if needed, and use a verified custom-domain sender here instead.
 
 `MAIL_FROM_NAME`
 Display name shown to customers.

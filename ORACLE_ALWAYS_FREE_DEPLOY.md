@@ -71,8 +71,9 @@ Use these important values in `.env`:
 HOST=127.0.0.1
 PORT=3000
 MAIL_PROVIDER=smtp
-SMTP_USER=your_gmail_address
-SMTP_PASS=your_rotated_gmail_app_password
+SMTP_SERVICE=gmail
+SMTP_USER=your_sender@example.com
+SMTP_PASS=your_rotated_smtp_password_or_app_password
 ```
 
 Also fill in:
@@ -83,7 +84,7 @@ Also fill in:
 - `BUSINESS_PHONE`
 - `UPI_ID`
 
-If you prefer Mailjet instead of Gmail SMTP on Oracle:
+If you prefer Mailjet instead of SMTP on Oracle:
 
 ```dotenv
 MAIL_PROVIDER=mailjet
@@ -202,7 +203,7 @@ Important Oracle free-tier notes
 --------------------------------
 
 - Oracle says Always Free compute instances can be reclaimed if they stay idle for 7 days under low CPU, memory, and network usage.
-- Oracle blocks outbound TCP port `25` by default. Gmail SMTP through authenticated submission ports is usually the safer path than running your own mail server.
+- Oracle blocks outbound TCP port `25` by default. Authenticated SMTP on ports such as `465` or `587`, or an HTTPS mail API like Mailjet, is usually safer than running your own mail server.
 
 Go-live checklist
 -----------------

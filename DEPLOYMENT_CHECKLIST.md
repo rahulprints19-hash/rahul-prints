@@ -13,9 +13,12 @@ Rahul Prints Deployment Checklist
 
 4. Configure email
    For local testing: set `MAIL_PROVIDER=smtp`
-   Add your Gmail address to `SMTP_USER`
-   Add a Gmail App Password to `SMTP_PASS`
+   Add your sender address to `SMTP_USER`
+   Add the SMTP password or app password to `SMTP_PASS`
+   Optional: use `SMTP_SERVICE` for Gmail, Outlook, or Zoho, or set `SMTP_HOST`, `SMTP_PORT`, and `SMTP_SECURE`
    For Render free deployment: set `MAIL_PROVIDER=mailjet`
+   Keep `BUSINESS_EMAIL` / `ORDER_NOTIFICATION_EMAIL` as the inbox you want to receive replies and order alerts on
+   Set `MAIL_FROM_EMAIL` to a verified custom-domain sender, not a Gmail/Hotmail/Yahoo address
    Add `MAIL_FROM_EMAIL`, `MAIL_FROM_NAME`, `MJ_APIKEY_PUBLIC`, and `MJ_APIKEY_PRIVATE`
 
 5. Configure UPI and business details
@@ -59,6 +62,6 @@ Rahul Prints Deployment Checklist
 
 12. Production safety checks
    Keep `.env` private
-   Rotate any old Gmail App Passwords that were exposed
+   Rotate any old app passwords that were exposed
    Avoid committing secrets to source files
-   Monitor Gmail sending limits if volume increases
+   Monitor your provider's sending limits if volume increases

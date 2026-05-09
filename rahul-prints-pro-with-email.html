@@ -499,6 +499,18 @@
                               <small>Open PhonePe with amount</small>
                             </span>
                           </button>
+                          <button type="button" id="paytmLaunchButton" class="upi-app-button upi-app-paytm">
+                            <span class="upi-app-mark" aria-hidden="true">
+                              <svg viewBox="0 0 48 48" class="upi-app-logo upi-app-logo-paytm" role="presentation" focusable="false">
+                                <rect x="4" y="4" width="40" height="40" rx="12" fill="#00BAF2"/>
+                                <path fill="#FFFFFF" d="M13 17.5h11.8c4 0 6.7 2.2 6.7 5.8 0 3.6-2.7 5.8-6.7 5.8h-4.2V34h-4.6V17.5Zm4.6 7.8h5c1.4 0 2.3-.7 2.3-2s-.9-2-2.3-2h-5v4Z"/>
+                              </svg>
+                            </span>
+                            <span class="upi-app-copy">
+                              <strong>Paytm</strong>
+                              <small>Open Paytm with amount</small>
+                            </span>
+                          </button>
                         </div>
                       </div>
                       <button type="button" id="upiLaunchButton" class="btn btn-primary btn-full">
@@ -532,6 +544,15 @@
                     </div>
 
                     <div id="paymentFeedback" class="payment-feedback is-hidden" aria-live="polite" aria-atomic="true"></div>
+
+                    <div id="paymentAttemptActions" class="payment-attempt-actions is-hidden">
+                      <p class="payment-attempt-title">What did the UPI app show?</p>
+                      <div class="payment-attempt-grid">
+                        <button type="button" id="paymentSucceededButton" class="payment-attempt-button payment-attempt-success">Payment Succeeded</button>
+                        <button type="button" id="paymentFailedButton" class="payment-attempt-button payment-attempt-failed">Payment Failed</button>
+                        <button type="button" id="paymentPendingButton" class="payment-attempt-button payment-attempt-pending">Still Pending</button>
+                      </div>
+                    </div>
 
                     <form id="paymentConfirmationForm" class="confirm-form">
                       <label class="field">

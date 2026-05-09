@@ -28,6 +28,7 @@ const state = {
   analysisRunId: 0,
   upiFallbackTimerId: null,
   externalPaymentAttempt: null,
+  upiLaunchCooldownUntil: 0,
   scrollAnimationFrameId: null,
   scrollTargetTimerId: null,
 };
@@ -45,6 +46,10 @@ const UPI_APP_CONFIG = {
     androidPackage: "com.phonepe.app",
     iosScheme: "phonepe",
     iosPath: "upi/pay",
+  },
+  paytm: {
+    label: "Paytm",
+    androidPackage: "net.one97.paytm",
   },
 };
 const UPI_APP_FALLBACK_DELAY_MS = 1800;
@@ -98,8 +103,13 @@ function wireElements() {
     "upiPayeeNameText",
     "gpayLaunchButton",
     "phonePeLaunchButton",
+    "paytmLaunchButton",
     "upiLaunchButton",
     "copyUpiButton",
+    "paymentAttemptActions",
+    "paymentSucceededButton",
+    "paymentFailedButton",
+    "paymentPendingButton",
     "paymentConfirmationForm",
     "paymentFeedback",
     "paymentApp",
@@ -171,8 +181,12 @@ function bindEvents() {
   elements.payerUpiId.addEventListener("input", handlePayerUpiIdInput);
   elements.gpayLaunchButton.addEventListener("click", () => launchNamedUpiApp("gpay"));
   elements.phonePeLaunchButton.addEventListener("click", () => launchNamedUpiApp("phonepe"));
+  elements.paytmLaunchButton.addEventListener("click", () => launchNamedUpiApp("paytm"));
   elements.upiLaunchButton.addEventListener("click", launchUpiApp);
   elements.copyUpiButton.addEventListener("click", copyUpiId);
+  elements.paymentSucceededButton.addEventListener("click", () => handleManualPaymentOutcome("success-selected"));
+  elements.paymentFailedButton.addEventListener("click", () => handleManualPaymentOutcome("failed-selected"));
+  elements.paymentPendingButton.addEventListener("click", () => handleManualPaymentOutcome("pending-selected"));
   elements.confirmCodButton.addEventListener("click", confirmCodOrder);
   elements.downloadInvoiceButton.addEventListener("click", downloadInvoice);
   elements.newOrderButton.addEventListener("click", startFreshOrder);
@@ -689,9 +703,13 @@ function renderPaymentSession({ restartTimer, resetConfirmationFields, keepScrol
     elements.payerUpiId.value = "";
     elements.gpayLaunchButton.disabled = false;
     elements.phonePeLaunchButton.disabled = false;
+    elements.paytmLaunchButton.disabled = false;
     elements.confirmPaymentButton.disabled = false;
     elements.upiLaunchButton.disabled = false;
     elements.copyUpiButton.disabled = false;
+    elements.paymentApp.disabled = false;
+    elements.transactionId.disabled = false;
+    elements.payerUpiId.disabled = false;
   }
 
   clearPaymentFeedback();
@@ -699,6 +717,7 @@ function renderPaymentSession({ restartTimer, resetConfirmationFields, keepScrol
   setPaymentProgress("pay");
   setPaymentMethod(state.paymentMethod || "upi");
   createUpiQr();
+  updatePaymentAttemptUi();
 
   if (restartTimer && state.paymentMethod === "upi") {
     startPaymentTimer();
@@ -860,6 +879,158 @@ function buildAndroidUpiIntent(packageName) {
   return `intent://pay?${buildUpiParams().toString()}#Intent;scheme=upi;package=${packageName};end`;
 }
 
+function createPaymentAttemptId() {
+  const stamp = Date.now();
+  const random = Math.random().toString(36).slice(2, 8).toUpperCase();
+  return `PA${stamp}${random}`;
+}
+
+async function postJson(url, payload) {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const result = await readJsonResponse(response);
+  if (!response.ok || !result.success) {
+    throw new Error(
+      result.error ||
+      result.message ||
+      `Request failed for ${url}.`
+    );
+  }
+
+  return result;
+}
+
+function syncPaymentAttemptStart(attempt) {
+  if (!attempt?.attemptId || !state.currentOrder) {
+    return;
+  }
+
+  const payload = {
+    attemptId: attempt.attemptId,
+    orderId: state.currentOrder.orderId,
+    amount: state.currentOrder.amount,
+    appKey: attempt.appKey,
+    appLabel: attempt.appLabel,
+    upiId: APP_CONFIG.upiId,
+    payeeName: APP_CONFIG.upiPayeeName || APP_CONFIG.businessName,
+    upiLink: state.currentOrder.payment?.upiLink || buildUpiLink(),
+    status: attempt.status || "initiated",
+    createdAt: attempt.createdAt,
+    expiresAt: new Date(state.paymentExpiresAt || (Date.now() + APP_CONFIG.paymentTimeoutMinutes * 60 * 1000)).toISOString(),
+    browserInfo: navigator.userAgent || "",
+  };
+
+  void postJson("/api/payment-attempts/start", payload)
+    .then((result) => {
+      if (state.externalPaymentAttempt?.attemptId === attempt.attemptId && result.attempt) {
+        state.externalPaymentAttempt = {
+          ...state.externalPaymentAttempt,
+          ...result.attempt,
+        };
+      }
+    })
+    .catch((error) => {
+      console.warn("Could not start payment attempt tracking:", error.message);
+    });
+}
+
+function syncPaymentAttemptUpdate(status, extras = {}) {
+  const attempt = state.externalPaymentAttempt;
+  if (!attempt?.attemptId) {
+    return Promise.resolve(null);
+  }
+
+  const nextAttempt = {
+    ...attempt,
+    status,
+    reason: extras.reason || attempt.reason || "",
+  };
+  state.externalPaymentAttempt = nextAttempt;
+  updatePaymentAttemptUi();
+
+  return postJson("/api/payment-attempts/update", {
+    attemptId: attempt.attemptId,
+    status,
+    appLabel: extras.appLabel || attempt.appLabel,
+    reason: extras.reason || attempt.reason || "",
+    transactionId: extras.transactionId || "",
+    payerUpiId: extras.payerUpiId || "",
+    confirmationMessage: extras.confirmationMessage || "",
+  }).then((result) => {
+    if (state.externalPaymentAttempt?.attemptId === attempt.attemptId && result.attempt) {
+      state.externalPaymentAttempt = {
+        ...state.externalPaymentAttempt,
+        ...result.attempt,
+      };
+      updatePaymentAttemptUi();
+    }
+    return result.attempt || null;
+  }).catch((error) => {
+    console.warn("Could not update payment attempt tracking:", error.message);
+    return null;
+  });
+}
+
+function requiresManualOutcomeSelection(attempt = state.externalPaymentAttempt) {
+  if (!attempt || !attempt.returned) {
+    return false;
+  }
+
+  if (attempt.appKey === "generic-upi") {
+    return false;
+  }
+
+  return !["success-selected", "confirmation-submitted", "confirmed"].includes(String(attempt.status || ""));
+}
+
+function updatePaymentAttemptUi() {
+  const attempt = state.externalPaymentAttempt;
+  const showActions = Boolean(
+    attempt &&
+    attempt.returned &&
+    !["confirmed", "cancelled", "expired"].includes(String(attempt.status || ""))
+  );
+
+  if (elements.paymentAttemptActions) {
+    elements.paymentAttemptActions.classList.toggle("is-hidden", !showActions);
+  }
+
+  const activeStatus = String(attempt?.status || "");
+  if (elements.paymentSucceededButton) {
+    elements.paymentSucceededButton.classList.toggle("is-active", activeStatus === "success-selected");
+  }
+  if (elements.paymentFailedButton) {
+    elements.paymentFailedButton.classList.toggle("is-active", activeStatus === "failed-selected");
+  }
+  if (elements.paymentPendingButton) {
+    elements.paymentPendingButton.classList.toggle("is-active", activeStatus === "pending-selected");
+  }
+
+  const disableManualConfirmation =
+    ["failed-selected", "pending-selected"].includes(activeStatus) ||
+    (requiresManualOutcomeSelection(attempt) &&
+      !["success-selected", "confirmation-submitted", "confirmed"].includes(activeStatus));
+
+  if (elements.transactionId) {
+    elements.transactionId.disabled = disableManualConfirmation;
+  }
+  if (elements.payerUpiId) {
+    elements.payerUpiId.disabled = disableManualConfirmation;
+  }
+  if (elements.paymentApp) {
+    elements.paymentApp.disabled = disableManualConfirmation;
+  }
+  if (elements.confirmPaymentButton) {
+    elements.confirmPaymentButton.disabled = disableManualConfirmation || state.timerExpired;
+  }
+}
+
 function isAndroidDevice() {
   return /android/i.test(navigator.userAgent || "");
 }
@@ -952,6 +1123,9 @@ function createUpiQr() {
     payerUpiId: "",
     paidAt: "",
     upiLink,
+    attemptId: "",
+    customerReportedStatus: "",
+    failureReason: "",
   };
 
   if (!upiLink) {
@@ -998,9 +1172,16 @@ function updateTimerDisplay() {
   elements.timerChip.classList.add("is-expired");
   elements.gpayLaunchButton.disabled = true;
   elements.phonePeLaunchButton.disabled = true;
+  elements.paytmLaunchButton.disabled = true;
   elements.confirmPaymentButton.disabled = true;
   elements.upiLaunchButton.disabled = true;
   elements.copyUpiButton.disabled = true;
+  if (state.externalPaymentAttempt?.attemptId) {
+    void syncPaymentAttemptUpdate("expired", {
+      appLabel: state.externalPaymentAttempt.appLabel,
+      confirmationMessage: "Payment session expired before confirmation.",
+    });
+  }
   showPaymentFeedback(
     "Payment session expired. Review the order again to generate a fresh amount and QR code before confirming.",
     "error"
@@ -1016,6 +1197,7 @@ function setPaymentMethod(method) {
   elements.codPanel.classList.toggle("is-hidden", method !== "cod");
   elements.timerChip.classList.toggle("is-hidden", method !== "upi");
   showDefaultPaymentFeedback();
+  updatePaymentAttemptUi();
 }
 
 function launchUpiApp() {
@@ -1029,11 +1211,19 @@ function launchUpiApp() {
     return;
   }
 
+  if (Date.now() < state.upiLaunchCooldownUntil) {
+    showPaymentFeedback("The payment app is already opening. Please wait a moment before trying again.", "info");
+    return;
+  }
+  state.upiLaunchCooldownUntil = Date.now() + 2500;
+
   state.currentOrder.payment.upiLink = buildUpiLink();
   registerExternalPaymentAttempt({
     appKey: "generic-upi",
     appLabel: elements.paymentApp.value.trim() || "UPI app",
   });
+  syncPaymentAttemptStart(state.externalPaymentAttempt);
+  updatePaymentAttemptUi();
   openUpiLink(state.currentOrder.payment.upiLink);
 }
 
@@ -1048,6 +1238,12 @@ function launchNamedUpiApp(appKey) {
     return;
   }
 
+  if (Date.now() < state.upiLaunchCooldownUntil) {
+    showPaymentFeedback("The payment app is already opening. Please wait a moment before trying again.", "info");
+    return;
+  }
+  state.upiLaunchCooldownUntil = Date.now() + 2500;
+
   const appConfig = UPI_APP_CONFIG[appKey];
   if (!appConfig) {
     launchUpiApp();
@@ -1060,6 +1256,8 @@ function launchNamedUpiApp(appKey) {
     appKey,
     appLabel: appConfig.label,
   });
+  syncPaymentAttemptStart(state.externalPaymentAttempt);
+  updatePaymentAttemptUi();
   showPaymentFeedback(
     `${isIosDevice() ? `Opening ${appConfig.label} on iPhone. After payment, switch back to Safari and submit the transaction ID and your UPI ID.` : `Opening ${appConfig.label}. Complete the payment there, then return here and submit the transaction ID and your UPI ID.`} If ${appConfig.label} says the amount was not debited, the payment did not go through. Return here without confirming and retry with the QR code, another bank account, or another UPI app.`,
     "info"
@@ -1068,13 +1266,34 @@ function launchNamedUpiApp(appKey) {
 }
 
 function registerExternalPaymentAttempt({ appKey, appLabel }) {
+  const previousAttempt = state.externalPaymentAttempt;
+  if (previousAttempt?.attemptId && !["confirmed", "cancelled", "expired"].includes(String(previousAttempt.status || ""))) {
+    void postJson("/api/payment-attempts/update", {
+      attemptId: previousAttempt.attemptId,
+      status: "cancelled",
+      appLabel: previousAttempt.appLabel,
+      confirmationMessage: "Customer started a newer payment attempt for the same order.",
+    }).catch((error) => {
+      console.warn("Could not cancel previous payment attempt tracking:", error.message);
+    });
+  }
+
   state.externalPaymentAttempt = {
+    attemptId: createPaymentAttemptId(),
     appKey: String(appKey || ""),
     appLabel: String(appLabel || "UPI app"),
+    status: "initiated",
     leftPage: false,
     returned: false,
+    createdAt: new Date().toISOString(),
     launchedAt: Date.now(),
   };
+
+  if (state.currentOrder?.payment) {
+    state.currentOrder.payment.attemptId = state.externalPaymentAttempt.attemptId;
+    state.currentOrder.payment.customerReportedStatus = "";
+    state.currentOrder.payment.failureReason = "";
+  }
 }
 
 function handlePaymentAppVisibilityChange() {
@@ -1085,6 +1304,12 @@ function handlePaymentAppVisibilityChange() {
 
   if (document.hidden) {
     attempt.leftPage = true;
+    if (attempt.status === "initiated" || attempt.status === "launching") {
+      void syncPaymentAttemptUpdate("app-opened", {
+        appLabel: attempt.appLabel,
+        confirmationMessage: "User switched to the external payment app.",
+      });
+    }
     return;
   }
 
@@ -1093,23 +1318,73 @@ function handlePaymentAppVisibilityChange() {
   }
 
   attempt.returned = true;
-  showPaymentFeedback(
-    buildReturnedFromPaymentAppMessage(attempt),
-    "info"
-  );
+  void syncPaymentAttemptUpdate("returned", {
+    appLabel: attempt.appLabel,
+    confirmationMessage: "User returned to the browser after opening the payment app.",
+  });
+  updatePaymentAttemptUi();
+  showPaymentFeedback(buildReturnedFromPaymentAppMessage(attempt), "warning");
 }
 
 function buildReturnedFromPaymentAppMessage(attempt) {
   if (isGooglePayAttempt(attempt)) {
-    return 'Back from Google Pay. If Google Pay said "Your money has not been debited" or "bank limit exceeded", that message came from Google Pay or the bank and the payment did not go through. No money should be confirmed from Rahul Prints until you have a real transaction ID. Retry with QR, another bank account, or another UPI app, and only enter the transaction ID below after a successful payment.';
+    return 'Back from Google Pay. Choose what happened below before confirming. If Google Pay said "Your money has not been debited" or "bank limit exceeded", the payment did not go through and you should mark it as failed or retry.';
   }
 
-  return `Back from ${attempt.appLabel || "your UPI app"}. If the app showed that the payment failed or the amount was not debited, the payment did not go through. Retry with another bank account, use another UPI app, or scan the QR code. Only enter the transaction ID below after a successful payment.`;
+  return `Back from ${attempt.appLabel || "your UPI app"}. Choose what happened below before confirming. If the app showed that the payment failed or the amount was not debited, mark it as failed and retry with another bank account, another UPI app, or the QR code.`;
 }
 
 function isGooglePayAttempt(attempt) {
   return /gpay|google pay/i.test(String(attempt?.appKey || "")) ||
     /google pay/i.test(String(attempt?.appLabel || ""));
+}
+
+function handleManualPaymentOutcome(status) {
+  const attempt = state.externalPaymentAttempt;
+  if (!attempt) {
+    return;
+  }
+
+  if (status === "success-selected") {
+    showPaymentFeedback(
+      `Payment marked as successful in ${attempt.appLabel || "your UPI app"}. Enter the exact transaction ID and your UPI ID below to verify the order.`,
+      "success"
+    );
+    void syncPaymentAttemptUpdate(status, {
+      appLabel: attempt.appLabel,
+      confirmationMessage: "Customer reported that the payment app showed success.",
+    });
+    updatePaymentAttemptUi();
+    elements.transactionId.focus();
+    return;
+  }
+
+  elements.transactionId.value = "";
+  elements.payerUpiId.value = "";
+
+  if (status === "failed-selected") {
+    showPaymentFeedback(
+      `No money was captured in ${attempt.appLabel || "the UPI app"}. Do not confirm this order yet. Retry with the QR code, another bank account, or another UPI app.`,
+      "error"
+    );
+    void syncPaymentAttemptUpdate(status, {
+      appLabel: attempt.appLabel,
+      reason: "Customer reported that the UPI app showed a failure or no debit.",
+      confirmationMessage: "Customer reported that the payment failed in the UPI app.",
+    });
+  } else {
+    showPaymentFeedback(
+      `The payment is still pending in ${attempt.appLabel || "the UPI app"}. Wait for a final success screen and a real transaction ID before confirming this order.`,
+      "warning"
+    );
+    void syncPaymentAttemptUpdate(status, {
+      appLabel: attempt.appLabel,
+      reason: "Customer reported that the payment is still pending.",
+      confirmationMessage: "Customer reported that the payment is still pending in the UPI app.",
+    });
+  }
+
+  updatePaymentAttemptUi();
 }
 
 async function copyUpiId() {
@@ -1137,10 +1412,19 @@ async function confirmUpiPayment(event) {
   const app = elements.paymentApp.value.trim();
   const transactionId = normaliseTransactionId(elements.transactionId.value);
   const payerUpiId = normaliseUpiId(elements.payerUpiId.value);
+  const attempt = state.externalPaymentAttempt;
 
   if (!app) {
     showPaymentFeedback("Select the UPI app used for payment.", "error");
     elements.paymentApp.focus();
+    return;
+  }
+
+  if (requiresManualOutcomeSelection(attempt)) {
+    showPaymentFeedback(
+      `Please choose whether the payment in ${attempt?.appLabel || "the UPI app"} succeeded, failed, or is still pending before confirming the order.`,
+      "warning"
+    );
     return;
   }
 
@@ -1169,7 +1453,19 @@ async function confirmUpiPayment(event) {
     payerUpiId,
     paidAt: new Date().toISOString(),
     upiLink: buildUpiLink(),
+    attemptId: attempt?.attemptId || "",
+    customerReportedStatus: attempt?.status || "success-selected",
+    failureReason: attempt?.reason || "",
   };
+
+  if (attempt?.attemptId) {
+    await syncPaymentAttemptUpdate("confirmation-submitted", {
+      appLabel: app,
+      transactionId,
+      payerUpiId,
+      confirmationMessage: "Customer submitted payment details for confirmation.",
+    });
+  }
 
   clearPaymentFeedback();
   await submitOrderConfirmation();
@@ -1242,6 +1538,10 @@ function handleSuccessfulConfirmation(result) {
   elements.upiPanel.classList.add("is-hidden");
   elements.codPanel.classList.add("is-hidden");
   elements.paymentSuccess.classList.remove("is-hidden");
+  if (state.externalPaymentAttempt) {
+    state.externalPaymentAttempt.status = "confirmed";
+  }
+  updatePaymentAttemptUi();
   clearPaymentFeedback();
   setPaymentProgress("receipt");
 
@@ -1402,6 +1702,7 @@ function downloadInvoice() {
 function toggleSubmitting(isSubmitting) {
   elements.gpayLaunchButton.disabled = isSubmitting || state.timerExpired;
   elements.phonePeLaunchButton.disabled = isSubmitting || state.timerExpired;
+  elements.paytmLaunchButton.disabled = isSubmitting || state.timerExpired;
   elements.confirmPaymentButton.disabled = isSubmitting || state.timerExpired;
   elements.confirmCodButton.disabled = isSubmitting;
   elements.upiLaunchButton.disabled = isSubmitting || state.timerExpired;
@@ -1416,20 +1717,43 @@ function toggleSubmitting(isSubmitting) {
     elements.confirmPaymentButton.innerHTML = '<i class="fas fa-circle-check"></i> Confirm Payment';
     elements.confirmCodButton.innerHTML = '<i class="fas fa-receipt"></i> Confirm Pickup Order';
   }
+
+  if (!isSubmitting) {
+    updatePaymentAttemptUi();
+  }
 }
 
 function resetPendingPaymentSession() {
+  const attempt = state.externalPaymentAttempt;
+  if (attempt?.attemptId && !["confirmed", "cancelled", "expired"].includes(String(attempt.status || ""))) {
+    void postJson("/api/payment-attempts/update", {
+      attemptId: attempt.attemptId,
+      status: "cancelled",
+      appLabel: attempt.appLabel,
+      confirmationMessage: "Payment session was reset before confirmation.",
+    }).catch((error) => {
+      console.warn("Could not cancel payment attempt tracking:", error.message);
+    });
+  }
+
   window.clearInterval(state.timerIntervalId);
   state.currentOrder = null;
   state.paymentExpiresAt = null;
   state.timerExpired = false;
   window.clearTimeout(state.upiFallbackTimerId);
   state.externalPaymentAttempt = null;
+  state.upiLaunchCooldownUntil = 0;
   setPaymentSessionState(false);
   elements.paymentSection.classList.add("is-hidden");
   elements.paymentSuccess.classList.add("is-hidden");
   elements.deliveryStatus.innerHTML = "";
   elements.qrCode.innerHTML = "";
+  if (elements.paymentAttemptActions) {
+    elements.paymentAttemptActions.classList.add("is-hidden");
+  }
+  elements.paymentApp.disabled = false;
+  elements.transactionId.disabled = false;
+  elements.payerUpiId.disabled = false;
   clearPaymentFeedback();
   setPaymentProgress("review");
 }
@@ -1887,6 +2211,38 @@ function showDefaultPaymentFeedback() {
       "error"
     );
     return;
+  }
+
+  const attempt = state.externalPaymentAttempt;
+  if (attempt?.returned) {
+    if (attempt.status === "success-selected") {
+      showPaymentFeedback(
+        `Payment marked as successful in ${attempt.appLabel || "your UPI app"}. Enter the exact transaction ID and your UPI ID below to verify the order.`,
+        "success"
+      );
+      return;
+    }
+    if (attempt.status === "failed-selected") {
+      showPaymentFeedback(
+        `No money was captured in ${attempt.appLabel || "the UPI app"}. Retry with the QR code, another bank account, or another UPI app before confirming the order.`,
+        "error"
+      );
+      return;
+    }
+    if (attempt.status === "pending-selected") {
+      showPaymentFeedback(
+        `The payment is still pending in ${attempt.appLabel || "the UPI app"}. Wait for a final success screen and transaction ID before confirming the order.`,
+        "warning"
+      );
+      return;
+    }
+    if (requiresManualOutcomeSelection(attempt)) {
+      showPaymentFeedback(
+        `Back from ${attempt.appLabel || "your UPI app"}. Choose whether the payment succeeded, failed, or is still pending before confirming the order.`,
+        "warning"
+      );
+      return;
+    }
   }
 
   const pricing = buildPricingSummary();
