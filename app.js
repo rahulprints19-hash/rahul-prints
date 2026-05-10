@@ -2,7 +2,7 @@ const APP_CONFIG = window.APP_CONFIG || {
   businessName: "Rahul Prints",
   businessEmail: "owner@example.com",
   businessPhone: "+919345574203",
-  upiId: "rahulsiva190@oksbi",
+  upiId: "rahul190812@ybl",
   upiPayeeName: "Rahul Siva",
   upiMerchantCode: "",
   maxForwardablePdfMb: 18,
