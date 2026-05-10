@@ -1,4 +1,5 @@
 const http = require("http");
+const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 const { execFile } = require("child_process");
@@ -63,6 +64,9 @@ const MAIL_FROM_NAME = sanitizeText(process.env.MAIL_FROM_NAME) || BUSINESS_NAME
 const MJ_APIKEY_PUBLIC = sanitizeText(process.env.MJ_APIKEY_PUBLIC);
 const MJ_APIKEY_PRIVATE = sanitizeText(process.env.MJ_APIKEY_PRIVATE);
 const MAILJET_API_BASE = sanitizeText(process.env.MAILJET_API_BASE) || "https://api.mailjet.com/v3.1/send";
+const RAZORPAY_KEY_ID = sanitizeText(process.env.RAZORPAY_KEY_ID);
+const RAZORPAY_KEY_SECRET = sanitizeText(process.env.RAZORPAY_KEY_SECRET);
+const RAZORPAY_API_BASE = sanitizeText(process.env.RAZORPAY_API_BASE) || "https://api.razorpay.com/v1";
 
 const STATIC_FILES = {
   "/": "rahul-prints-pro-with-email.html",
@@ -124,6 +128,10 @@ if (MAIL_PROVIDER === "smtp" && smtpTransportOptions) {
   }
 } else {
   console.warn("Email delivery is not configured. Set MAIL_PROVIDER to mailjet or smtp before deploying.");
+}
+
+if (!RAZORPAY_KEY_ID || !RAZORPAY_KEY_SECRET) {
+  console.warn("Razorpay is not configured. Add RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET before accepting online payments.");
 }
 
 Promise.all([ensureOrdersStore(), ensurePaymentAttemptsStore()]).catch((error) => {
@@ -239,6 +247,21 @@ async function handlePaymentAttemptUpdate(response, payload) {
     sendJson(response, error.statusCode || 400, {
       success: false,
       error: error.message || "Could not update the payment attempt.",
+    });
+  }
+}
+
+async function handleRazorpayOrderRequest(response, payload) {
+  try {
+    const checkout = await createRazorpayOrderForOrder(payload);
+    sendJson(response, 200, {
+      success: true,
+      ...checkout,
+    });
+  } catch (error) {
+    sendJson(response, error.statusCode || 400, {
+      success: false,
+      error: error.message || "Could not start Razorpay checkout.",
     });
   }
 }
@@ -454,6 +477,19 @@ function isValidUpiId(value) {
   return /^[a-z0-9._-]{2,}@[a-z][a-z0-9.-]{1,}$/i.test(value);
 }
 
+function isValidRazorpayReference(value, expectedPrefix = "") {
+  const normalized = sanitizeText(value);
+  if (!/^[A-Za-z0-9_]{10,80}$/.test(normalized)) {
+    return false;
+  }
+
+  return expectedPrefix ? normalized.startsWith(`${expectedPrefix}_`) : true;
+}
+
+function isValidRazorpaySignature(value) {
+  return /^[a-f0-9]{64}$/i.test(sanitizeText(value));
+}
+
 function formatCurrency(amount) {
   return new Intl.NumberFormat("en-IN", {
     style: "currency",
@@ -589,7 +625,13 @@ function isPdfBuffer(buffer) {
 }
 
 function getPaymentMethodLabel(order) {
-  return order.payment.method === "cod" ? "Cash on Pickup" : "UPI";
+  if (order.payment.method === "cod") {
+    return "Cash on Pickup";
+  }
+  if (order.payment.method === "razorpay") {
+    return "Online Payment via Razorpay";
+  }
+  return "UPI";
 }
 
 function getPaymentStatusLabel(order) {
@@ -833,6 +875,9 @@ function normaliseOrder(payload) {
       payerUpiId: sanitizeUpiId(payment.payerUpiId),
       paidAt: sanitizeText(payment.paidAt) || new Date().toISOString(),
       upiLink: sanitizeText(payment.upiLink),
+      razorpayOrderId: sanitizeText(payment.razorpayOrderId),
+      razorpayPaymentId: sanitizeText(payment.razorpayPaymentId),
+      razorpaySignature: sanitizeText(payment.razorpaySignature),
       attemptId: sanitizeText(payment.attemptId),
       customerReportedStatus: sanitizePaymentAttemptStatus(payment.customerReportedStatus || "success-selected"),
       failureReason: sanitizeText(payment.failureReason),
@@ -883,6 +928,22 @@ function normaliseOrder(payload) {
       errors.push("The payment app still shows the payment as failed or pending. Retry the payment before confirming.");
     }
     normalized.payment.verificationStatus = "transaction-details-captured";
+  } else if (normalized.payment.method === "razorpay") {
+    if (!normalized.payment.razorpayOrderId) errors.push("Razorpay order ID is required.");
+    if (!normalized.payment.razorpayPaymentId) errors.push("Razorpay payment ID is required.");
+    if (!normalized.payment.razorpaySignature) errors.push("Razorpay payment signature is required.");
+    if (!isValidRazorpayReference(normalized.payment.razorpayOrderId, "order")) {
+      errors.push("Razorpay order ID format is invalid.");
+    }
+    if (!isValidRazorpayReference(normalized.payment.razorpayPaymentId, "pay")) {
+      errors.push("Razorpay payment ID format is invalid.");
+    }
+    if (!isValidRazorpaySignature(normalized.payment.razorpaySignature)) {
+      errors.push("Razorpay signature format is invalid.");
+    }
+    normalized.payment.transactionId = normalized.payment.razorpayPaymentId;
+    normalized.payment.app = normalized.payment.app || "Razorpay Checkout";
+    normalized.payment.verificationStatus = "gateway-signature-pending";
   } else if (normalized.payment.method === "cod") {
     normalized.payment.verificationStatus = "pickup-payment";
   } else {
@@ -896,6 +957,182 @@ function normaliseOrder(payload) {
   }
 
   return normalized;
+}
+
+function normaliseOrderDraft(payload) {
+  const order = payload && typeof payload === "object" ? payload : {};
+  return normaliseOrder({
+    ...order,
+    payment: {
+      method: "cod",
+    },
+  });
+}
+
+function isRazorpayConfigured() {
+  return Boolean(RAZORPAY_KEY_ID && RAZORPAY_KEY_SECRET);
+}
+
+function toRazorpaySubunits(amount) {
+  return Math.round(Number(amount || 0) * 100);
+}
+
+function buildRazorpayReceipt(orderId) {
+  return sanitizeText(orderId).slice(0, 40);
+}
+
+async function requestRazorpayJson(pathname, options = {}) {
+  if (!isRazorpayConfigured()) {
+    const error = new Error("Razorpay is not configured. Add RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET before taking online payments.");
+    error.statusCode = 503;
+    throw error;
+  }
+
+  const requestUrl = `${RAZORPAY_API_BASE.replace(/\/+$/, "")}/${String(pathname || "").replace(/^\/+/, "")}`;
+  const response = await fetch(requestUrl, {
+    method: options.method || "GET",
+    headers: {
+      Authorization: `Basic ${Buffer.from(`${RAZORPAY_KEY_ID}:${RAZORPAY_KEY_SECRET}`).toString("base64")}`,
+      "Content-Type": "application/json",
+      ...(options.headers || {}),
+    },
+    body: options.body ? JSON.stringify(options.body) : undefined,
+  });
+
+  const raw = await response.text();
+  let parsed = {};
+  try {
+    parsed = raw ? JSON.parse(raw) : {};
+  } catch {
+    parsed = {
+      message: raw,
+    };
+  }
+
+  if (!response.ok) {
+    const error = new Error(
+      parsed?.error?.description ||
+      parsed?.description ||
+      parsed?.message ||
+      `Razorpay request failed with status ${response.status}.`
+    );
+    error.statusCode = response.status;
+    throw error;
+  }
+
+  return parsed;
+}
+
+async function createRazorpayOrderForOrder(orderDraft) {
+  const normalized = normaliseOrderDraft(orderDraft);
+  const receipt = buildRazorpayReceipt(normalized.orderId);
+  const amount = toRazorpaySubunits(normalized.amount);
+
+  if (amount <= 0) {
+    const error = new Error("Order amount must be greater than 0 before opening Razorpay checkout.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const gatewayOrder = await requestRazorpayJson("/orders", {
+    method: "POST",
+    body: {
+      amount,
+      currency: "INR",
+      receipt,
+      notes: {
+        appOrderId: normalized.orderId,
+        documentName: normalized.document.fileName.slice(0, 200),
+        customerName: normalized.customer.name.slice(0, 80),
+      },
+    },
+  });
+
+  return {
+    keyId: RAZORPAY_KEY_ID,
+    razorpayOrderId: sanitizeText(gatewayOrder.id),
+    amount: Number(gatewayOrder.amount || amount),
+    currency: sanitizeText(gatewayOrder.currency) || "INR",
+    receipt: sanitizeText(gatewayOrder.receipt) || receipt,
+    orderId: normalized.orderId,
+  };
+}
+
+function assertValidRazorpaySignature(order) {
+  const generated = crypto
+    .createHmac("sha256", RAZORPAY_KEY_SECRET)
+    .update(`${order.payment.razorpayOrderId}|${order.payment.razorpayPaymentId}`)
+    .digest("hex");
+
+  const provided = sanitizeText(order.payment.razorpaySignature).toLowerCase();
+  const expected = sanitizeText(generated).toLowerCase();
+
+  if (provided.length !== expected.length) {
+    const error = new Error("Razorpay payment signature did not match.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (!crypto.timingSafeEqual(Buffer.from(provided), Buffer.from(expected))) {
+    const error = new Error("Razorpay payment signature did not match.");
+    error.statusCode = 400;
+    throw error;
+  }
+}
+
+async function verifyRazorpayPayment(order) {
+  assertValidRazorpaySignature(order);
+  const payment = await requestRazorpayJson(`/payments/${encodeURIComponent(order.payment.razorpayPaymentId)}`);
+
+  if (sanitizeText(payment.order_id) !== order.payment.razorpayOrderId) {
+    const error = new Error("The Razorpay payment did not belong to the created Razorpay order.");
+    error.statusCode = 409;
+    throw error;
+  }
+
+  if (Number(payment.amount || 0) !== toRazorpaySubunits(order.amount)) {
+    const error = new Error("The Razorpay payment amount did not match the detected PDF pricing.");
+    error.statusCode = 409;
+    throw error;
+  }
+
+  if (sanitizeText(payment.currency) !== "INR") {
+    const error = new Error("The Razorpay payment currency was not INR.");
+    error.statusCode = 409;
+    throw error;
+  }
+
+  if (sanitizeText(payment.status) !== "captured") {
+    const error = new Error(
+      sanitizeText(payment.status) === "authorized"
+        ? "Razorpay shows the payment as authorized but not captured yet. Enable auto-capture in Razorpay, wait a moment, and try again."
+        : `Razorpay shows the payment as ${sanitizeText(payment.status, "not captured")}. Only captured payments can confirm the order.`
+    );
+    error.statusCode = 409;
+    throw error;
+  }
+
+  const capturedAt = Number(payment.captured_at || 0);
+  const createdAt = Number(payment.created_at || 0);
+  const paidAt = capturedAt > 0
+    ? new Date(capturedAt * 1000).toISOString()
+    : createdAt > 0
+      ? new Date(createdAt * 1000).toISOString()
+      : new Date().toISOString();
+  const gatewayMethod = sanitizeText(payment.method);
+  const gatewayVpa = sanitizeUpiId(payment.vpa);
+
+  return {
+    paymentId: sanitizeText(payment.id),
+    orderId: sanitizeText(payment.order_id),
+    status: sanitizeText(payment.status),
+    method: gatewayMethod || "online",
+    vpa: gatewayVpa,
+    email: sanitizeText(payment.email),
+    contact: sanitizeText(payment.contact),
+    paidAt,
+    appLabel: gatewayMethod ? `Razorpay Checkout (${gatewayMethod.toUpperCase()})` : "Razorpay Checkout",
+  };
 }
 
 function normaliseUploadedPdfBuffer(buffer, fallbackFileName, declaredSize = 0) {
@@ -1106,14 +1343,36 @@ function buildVerificationChecks(order) {
       checks.push(`Customer payment attempt tracked under ID ${order.payment.attemptId}.`);
     }
     checks.push("Duplicate transaction ID check passed against previously saved orders.");
+  } else if (order.payment.method === "razorpay") {
+    checks.push(`Razorpay payment ID verified: ${order.payment.razorpayPaymentId || order.payment.transactionId}.`);
+    checks.push(`Razorpay order ID verified: ${order.payment.razorpayOrderId}.`);
+    checks.push("Razorpay payment signature matched the server secret.");
+    if (order.payment.gatewayMethod) {
+      checks.push(`Razorpay reported payment method: ${order.payment.gatewayMethod}.`);
+    }
+    if (order.payment.payerUpiId) {
+      checks.push(`Razorpay reported payer UPI ID: ${order.payment.payerUpiId}.`);
+    }
+    checks.push("Razorpay payment status was confirmed as captured.");
   } else {
-    checks.push("Cash on pickup was selected instead of UPI.");
+    checks.push("Cash on pickup was selected instead of online payment.");
   }
 
   return checks;
 }
 
 function getPaymentDetailRows(order, statusText) {
+  if (order.payment.method === "razorpay") {
+    return [
+      { label: "Payment Provider", value: "Razorpay" },
+      { label: "Razorpay Payment ID", value: order.payment.razorpayPaymentId || order.payment.transactionId || "NA" },
+      { label: "Razorpay Order ID", value: order.payment.razorpayOrderId || "NA" },
+      { label: "Payment Method", value: order.payment.gatewayMethod || "Online Payment" },
+      { label: "Payment Status", value: statusText },
+      { label: "Date & Time", value: formatDateTime(order.payment.paidAt), valueFont: "Helvetica" },
+    ];
+  }
+
   if (order.payment.method === "upi") {
     return [
       { label: "UPI ID", value: order.payment.payerUpiId || "NA" },
@@ -1563,6 +1822,21 @@ async function handleOrderConfirmation(response, payload) {
     if (order.document.printMode === "bw-only" && order.document.convertedToBw) {
       uploadedPdf = await convertUploadedPdfToBlackWhite(uploadedPdf);
     }
+    if (order.payment.method === "razorpay") {
+      const verifiedPayment = await verifyRazorpayPayment(order);
+      order.payment.transactionId = verifiedPayment.paymentId;
+      order.payment.razorpayPaymentId = verifiedPayment.paymentId;
+      order.payment.razorpayOrderId = verifiedPayment.orderId;
+      order.payment.payerUpiId = verifiedPayment.vpa || order.payment.payerUpiId;
+      order.payment.paidAt = verifiedPayment.paidAt;
+      order.payment.app = verifiedPayment.appLabel;
+      order.payment.gatewayProvider = "Razorpay";
+      order.payment.gatewayMethod = verifiedPayment.method;
+      order.payment.gatewayStatus = verifiedPayment.status;
+      order.payment.gatewayEmail = verifiedPayment.email;
+      order.payment.gatewayContact = verifiedPayment.contact;
+      order.payment.verificationStatus = "gateway-verified";
+    }
     await assertUniqueTransactionId(order);
 
     const verificationChecks = buildVerificationChecks(order);
@@ -1621,6 +1895,9 @@ async function handleOrderConfirmation(response, payload) {
       verification: {
         transactionId: order.payment.transactionId,
         payerUpiId: order.payment.payerUpiId,
+        gatewayOrderId: order.payment.razorpayOrderId,
+        gatewayPaymentId: order.payment.razorpayPaymentId,
+        gatewayMethod: order.payment.gatewayMethod,
         checks: verificationChecks,
       },
       attachments: {
@@ -1634,10 +1911,14 @@ async function handleOrderConfirmation(response, payload) {
         orderId: order.orderId,
         customerName: order.customer.name,
         customerEmail: order.customer.email,
-        merchantUpiId: UPI_ID,
+        merchantUpiId: order.payment.method === "upi" ? UPI_ID : "",
         paymentAttemptId: order.payment.attemptId,
         payerUpiId: order.payment.payerUpiId,
         transactionId: order.payment.transactionId,
+        gatewayProvider: order.payment.gatewayProvider || (order.payment.method === "razorpay" ? "Razorpay" : ""),
+        gatewayMethod: order.payment.gatewayMethod || "",
+        gatewayOrderId: order.payment.razorpayOrderId || "",
+        gatewayPaymentId: order.payment.razorpayPaymentId || "",
         copies: order.document.copies,
         colorPages: order.document.colorPages,
         bwPages: order.document.bwPages,
@@ -1699,6 +1980,8 @@ function buildPublicConfig() {
     businessName: BUSINESS_NAME,
     businessEmail: BUSINESS_EMAIL,
     businessPhone: BUSINESS_PHONE,
+    razorpayKeyId: RAZORPAY_KEY_ID,
+    razorpayEnabled: isRazorpayConfigured(),
     upiId: UPI_ID,
     upiPayeeName: UPI_PAYEE_NAME,
     upiMerchantCode: UPI_MERCHANT_CODE,
@@ -1736,6 +2019,19 @@ const server = http.createServer(async (request, response) => {
 
   if (request.method === "POST" && pathname === "/api/pdf/analyze") {
     await handlePdfAnalysis(response, request);
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/payments/razorpay/order") {
+    try {
+      const payload = await readJsonBody(request);
+      await handleRazorpayOrderRequest(response, payload);
+    } catch (error) {
+      sendJson(response, error.statusCode || 400, {
+        success: false,
+        error: error.message || "Could not start Razorpay checkout.",
+      });
+    }
     return;
   }
 
