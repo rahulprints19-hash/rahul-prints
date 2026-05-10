@@ -1562,6 +1562,47 @@ button {
   text-transform: uppercase;
 }
 
+.payment-badges {
+  display: grid;
+  justify-items: end;
+  gap: 8px;
+}
+
+.payment-device-badge {
+  display: inline-flex;
+  width: max-content;
+  align-items: center;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(27, 102, 255, 0.1);
+  color: var(--primary);
+  font-size: 0.8rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.payment-device-brief {
+  display: grid;
+  gap: 6px;
+  padding: 15px 16px;
+  border-radius: 20px;
+  border: 1px solid rgba(216, 225, 239, 0.94);
+  background: linear-gradient(180deg, rgba(248, 251, 255, 0.98), rgba(255, 255, 255, 0.98));
+}
+
+.payment-device-brief strong {
+  color: var(--primary-dark);
+  font-size: 0.98rem;
+  font-weight: 800;
+}
+
+.payment-device-brief p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.62;
+}
+
 .qr-launcher {
   display: grid;
   gap: 14px;
@@ -2457,6 +2498,10 @@ body.has-active-payment-session .mobile-order-bar {
   .upi-panel-head,
   .upi-direct-strip {
     flex-direction: column;
+  }
+
+  .payment-badges {
+    justify-items: start;
   }
 
   .qr-code {

@@ -468,12 +468,22 @@
                   <div class="qr-card upi-quickpay-card">
                     <div class="upi-panel-head">
                       <div>
-                        <p class="qr-title">Scan the QR or tap Pay Now</p>
-                        <p class="upi-panel-copy">
+                        <p id="qrTitleText" class="qr-title">Scan the QR or tap Pay Now</p>
+                        <p id="upiPanelCopyText" class="upi-panel-copy">
                           Payments go straight to Rahul Prints through your UPI app, and the exact amount is filled automatically from this order.
                         </p>
                       </div>
-                      <span class="upi-direct-badge">Direct UPI</span>
+                      <div class="payment-badges">
+                        <span class="upi-direct-badge">Direct UPI</span>
+                        <span id="paymentDeviceBadge" class="payment-device-badge">Device-aware</span>
+                      </div>
+                    </div>
+
+                    <div class="payment-device-brief">
+                      <strong id="paymentDeviceTitle">Pay in the best way for this device</strong>
+                      <p id="paymentDeviceSummary">
+                        We automatically tailor the payment steps for desktop, Android, and iPhone so customers get the cleanest UPI handoff for their device.
+                      </p>
                     </div>
 
                     <div id="qrLauncherButton" class="qr-launcher" role="button" tabindex="0" aria-label="Open UPI apps on mobile or scan the QR code">
@@ -481,7 +491,7 @@
                       <div class="qr-launcher-copy">
                         <p class="upi-meta">Payee: <strong id="upiPayeeNameText">Rahul Siva</strong></p>
                         <p class="upi-meta">UPI ID: <strong id="upiIdText">rahul190812@ybl</strong></p>
-                        <p class="qr-launcher-note">On mobile, tap this QR card to open UPI apps. On desktop, scan it with any UPI app on your phone.</p>
+                        <p id="qrLauncherNoteText" class="qr-launcher-note">On mobile, tap this QR card to open UPI apps. On desktop, scan it with any UPI app on your phone.</p>
                       </div>
                     </div>
 
@@ -492,11 +502,11 @@
 
                     <div class="action-stack">
                       <button type="button" id="upiLaunchButton" class="btn btn-primary btn-full">
-                        <i class="fas fa-mobile-screen-button"></i>
-                        Pay Now
+                        <i id="upiLaunchButtonIcon" class="fas fa-mobile-screen-button"></i>
+                        <span id="upiLaunchButtonLabel">Pay Now</span>
                       </button>
                       <div class="mobile-upi-apps">
-                        <p class="mobile-upi-label">Quick pay with your UPI app</p>
+                        <p id="mobileUpiLabel" class="mobile-upi-label">Quick pay with your UPI app</p>
                         <div class="mobile-upi-grid">
                           <button type="button" id="gpayLaunchButton" class="upi-app-button upi-app-gpay">
                             <span class="upi-app-mark" aria-hidden="true">
@@ -558,7 +568,7 @@
                         <i class="fas fa-copy"></i>
                         Copy UPI ID
                       </button>
-                      <p class="upi-launch-help">
+                      <p id="upiLaunchHelpText" class="upi-launch-help">
                         If the phone does not open a payment app, scan the QR code or copy the UPI ID manually.
                       </p>
                     </div>
@@ -570,9 +580,9 @@
                       Money goes directly to Rahul Prints only after your UPI app shows a successful payment. Then return here and submit the transaction details.
                     </div>
                     <ol class="steps-list">
-                      <li>On Android, tap Pay Now or the QR card to let the phone show installed UPI apps. On iPhone, use the quick app buttons below the QR.</li>
-                      <li>Complete payment inside the selected UPI app with the pre-filled amount.</li>
-                      <li>Return here and submit the exact transaction ID and your UPI ID to unlock the receipt.</li>
+                      <li id="paymentFlowStepOne">On Android, tap Pay Now or the QR card to let the phone show installed UPI apps. On iPhone, use the quick app buttons below the QR.</li>
+                      <li id="paymentFlowStepTwo">Complete payment inside the selected UPI app with the pre-filled amount.</li>
+                      <li id="paymentFlowStepThree">Return here and submit the exact transaction ID and your UPI ID to unlock the receipt.</li>
                     </ol>
 
                     <div class="payment-failure-note">

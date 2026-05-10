@@ -31,6 +31,7 @@ const state = {
   externalPaymentAttempt: null,
   upiLaunchCooldownUntil: 0,
   upiOptionsPulseTimerId: null,
+  preferredUpiAppKey: "",
   scrollAnimationFrameId: null,
   scrollTargetTimerId: null,
 };
@@ -58,6 +59,83 @@ const UPI_APP_CONFIG = {
   },
 };
 const UPI_APP_FALLBACK_DELAY_MS = 1800;
+const DEVICE_PAYMENT_PROFILES = {
+  desktop: {
+    key: "desktop",
+    badge: "Desktop Flow",
+    heroTitle: "Scan the QR with your phone",
+    heroCopy:
+      "Payments go straight to Rahul Prints. On desktop, the smoothest flow is to scan the QR from your phone or copy the UPI details manually.",
+    deviceTitle: "Desktop browsers are QR-first for UPI",
+    deviceSummary:
+      "Desktop browsers cannot reliably open mobile UPI apps. Scan the QR with Google Pay, PhonePe, Paytm, BHIM, or any UPI app on your phone.",
+    qrNote:
+      "Desktop mode: scan this QR with any UPI app on your phone. If needed, copy the UPI ID manually.",
+    primaryButtonLabel: "Copy Payment Link",
+    mobileAppsLabel: "Prefer to continue on your phone?",
+    launchHelp:
+      "Use the QR code first. If you need a fallback, copy the payment link or the UPI ID and open it on your phone.",
+    showQuickPayApps: false,
+    qrAriaLabel: "Scan the QR code with your phone to pay via UPI",
+    steps: [
+      "Open any UPI app on your phone and scan this QR code from your desktop screen.",
+      "Complete the payment in your phone with the exact amount already filled in.",
+      "Return here and submit the exact transaction ID and your UPI ID to unlock the receipt.",
+    ],
+    defaultFeedback:
+      "Desktop flow ready. Scan the QR with any UPI app on your phone. The amount is already filled in for this order.",
+  },
+  android: {
+    key: "android",
+    badge: "Android Flow",
+    heroTitle: "Tap Pay Now or the QR card",
+    heroCopy:
+      "Payments go straight to Rahul Prints through your UPI app, and the exact amount is filled automatically from this order.",
+    deviceTitle: "Android uses the native UPI chooser",
+    deviceSummary:
+      "Tap Pay Now or the QR card to let Android show your installed UPI apps with the exact amount ready. If your phone asks, choose Google Pay, PhonePe, Paytm, BHIM, or another UPI app.",
+    qrNote:
+      "Android: tap this QR card or Pay Now to open your installed UPI apps, or scan the QR from another phone if needed.",
+    primaryButtonLabel: "Open UPI Apps",
+    mobileAppsLabel: "Prefer a specific UPI app?",
+    launchHelp:
+      "If the chooser does not appear, try the quick-pay app buttons, scan the QR code, or copy the UPI ID manually.",
+    showQuickPayApps: true,
+    qrAriaLabel: "Open the Android UPI chooser or scan the QR code",
+    steps: [
+      "Tap Pay Now or the QR card to open the Android UPI chooser.",
+      "Pick Google Pay, PhonePe, Paytm, BHIM, or another installed UPI app and complete payment.",
+      "Return here and submit the exact transaction ID and your UPI ID to unlock the receipt.",
+    ],
+    defaultFeedback:
+      "Android flow ready. Tap Pay Now to open your installed UPI apps with the exact amount filled in. If your phone asks, choose the app you want to use.",
+  },
+  ios: {
+    key: "ios",
+    badge: "iPhone Flow",
+    heroTitle: "Choose your UPI app below",
+    heroCopy:
+      "Payments go straight to Rahul Prints. On iPhone, the most reliable handoff is to pick the exact UPI app you want to open.",
+    deviceTitle: "iPhone works best with app-specific launches",
+    deviceSummary:
+      "Tap the UPI app button you want to use so Safari can hand the payment to that app with the amount ready. If app opening is blocked, use the QR or copy the UPI ID.",
+    qrNote:
+      "iPhone: use the app buttons below for the cleanest handoff. If nothing opens, scan the QR from another device or copy the UPI ID.",
+    primaryButtonLabel: "Choose UPI App",
+    mobileAppsLabel: "Tap your UPI app",
+    launchHelp:
+      "Use Google Pay, PhonePe, Paytm, BHIM, or another installed UPI app. If none opens, scan the QR code or copy the UPI ID manually.",
+    showQuickPayApps: true,
+    qrAriaLabel: "Choose a UPI app on iPhone or scan the QR code",
+    steps: [
+      "Tap the UPI app button you want to use below the QR code.",
+      "Complete payment inside that UPI app with the pre-filled amount.",
+      "Return here and submit the exact transaction ID and your UPI ID to unlock the receipt.",
+    ],
+    defaultFeedback:
+      "iPhone flow ready. Tap the UPI app you want to use below. If nothing opens, scan the QR from another device or copy the UPI ID.",
+  },
+};
 
 document.addEventListener("DOMContentLoaded", () => {
   wireElements();
@@ -103,17 +181,27 @@ function wireElements() {
     "orderIdDisplay",
     "paymentTimer",
     "timerChip",
+    "qrTitleText",
+    "upiPanelCopyText",
+    "paymentDeviceBadge",
+    "paymentDeviceTitle",
+    "paymentDeviceSummary",
     "qrLauncherButton",
     "qrCode",
     "upiIdText",
     "upiPayeeNameText",
+    "qrLauncherNoteText",
     "gpayLaunchButton",
     "phonePeLaunchButton",
     "paytmLaunchButton",
     "bhimLaunchButton",
     "otherUpiLaunchButton",
     "upiLaunchButton",
+    "upiLaunchButtonIcon",
+    "upiLaunchButtonLabel",
+    "mobileUpiLabel",
     "copyUpiButton",
+    "upiLaunchHelpText",
     "paymentAttemptActions",
     "paymentSucceededButton",
     "paymentFailedButton",
@@ -140,6 +228,9 @@ function wireElements() {
     "supportPhoneLink",
     "contactPhoneText",
     "contactEmailText",
+    "paymentFlowStepOne",
+    "paymentFlowStepTwo",
+    "paymentFlowStepThree",
   ].forEach((id) => {
     elements[id] = document.getElementById(id);
   });
@@ -162,6 +253,7 @@ function applyPublicConfig() {
   elements.supportPhoneLink.textContent = `Call ${APP_CONFIG.businessPhone}`;
   elements.contactPhoneText.textContent = APP_CONFIG.businessPhone;
   elements.contactEmailText.textContent = APP_CONFIG.businessEmail;
+  updateDeviceAwarePaymentUi();
 }
 
 function configurePdfWorker() {
@@ -1065,8 +1157,98 @@ function isMobileDevice() {
   return isAndroidDevice() || isIosDevice();
 }
 
+function getPaymentDeviceProfile() {
+  if (isAndroidDevice()) {
+    return DEVICE_PAYMENT_PROFILES.android;
+  }
+
+  if (isIosDevice()) {
+    return DEVICE_PAYMENT_PROFILES.ios;
+  }
+
+  return DEVICE_PAYMENT_PROFILES.desktop;
+}
+
+function getPreferredUpiAppLabel() {
+  return UPI_APP_CONFIG[state.preferredUpiAppKey]?.label || "";
+}
+
+function getPrimaryUpiActionLabel(profile = getPaymentDeviceProfile()) {
+  if (profile.key === "ios") {
+    const preferredLabel = getPreferredUpiAppLabel();
+    if (preferredLabel && state.preferredUpiAppKey !== "other") {
+      return `Open ${preferredLabel}`;
+    }
+  }
+
+  return profile.primaryButtonLabel;
+}
+
+function updateDeviceAwarePaymentUi() {
+  const profile = getPaymentDeviceProfile();
+  document.documentElement.dataset.paymentDevice = profile.key;
+
+  if (elements.qrTitleText) {
+    elements.qrTitleText.textContent = profile.heroTitle;
+  }
+  if (elements.upiPanelCopyText) {
+    elements.upiPanelCopyText.textContent = profile.heroCopy;
+  }
+  if (elements.paymentDeviceBadge) {
+    elements.paymentDeviceBadge.textContent = profile.badge;
+  }
+  if (elements.paymentDeviceTitle) {
+    elements.paymentDeviceTitle.textContent = profile.deviceTitle;
+  }
+  if (elements.paymentDeviceSummary) {
+    elements.paymentDeviceSummary.textContent = profile.deviceSummary;
+  }
+  if (elements.qrLauncherNoteText) {
+    elements.qrLauncherNoteText.textContent = profile.qrNote;
+  }
+  if (elements.upiLaunchButtonLabel) {
+    elements.upiLaunchButtonLabel.textContent = getPrimaryUpiActionLabel(profile);
+  }
+  if (elements.upiLaunchButtonIcon) {
+    elements.upiLaunchButtonIcon.className = `fas ${profile.key === "desktop" ? "fa-link" : "fa-mobile-screen-button"}`;
+  }
+  if (elements.mobileUpiLabel) {
+    elements.mobileUpiLabel.textContent = profile.mobileAppsLabel;
+  }
+  if (elements.upiLaunchHelpText) {
+    elements.upiLaunchHelpText.textContent = profile.launchHelp;
+  }
+  if (elements.paymentFlowStepOne) {
+    elements.paymentFlowStepOne.textContent = profile.steps[0];
+  }
+  if (elements.paymentFlowStepTwo) {
+    elements.paymentFlowStepTwo.textContent = profile.steps[1];
+  }
+  if (elements.paymentFlowStepThree) {
+    elements.paymentFlowStepThree.textContent = profile.steps[2];
+  }
+  if (elements.mobileUpiApps) {
+    elements.mobileUpiApps.classList.toggle("is-hidden", !profile.showQuickPayApps);
+    elements.mobileUpiApps.setAttribute("aria-hidden", profile.showQuickPayApps ? "false" : "true");
+  }
+  if (elements.qrLauncherButton) {
+    elements.qrLauncherButton.setAttribute("aria-label", profile.qrAriaLabel);
+  }
+}
+
+function bringQuickPayAppsIntoView() {
+  if (!elements.mobileUpiApps || elements.mobileUpiApps.classList.contains("is-hidden")) {
+    return;
+  }
+
+  pulseUpiAppOptions();
+  scrollToElementWithHeaderOffset(elements.mobileUpiApps, {
+    duration: 240,
+  });
+}
+
 function pulseUpiAppOptions() {
-  if (!elements.mobileUpiApps) {
+  if (!elements.mobileUpiApps || elements.mobileUpiApps.classList.contains("is-hidden")) {
     return;
   }
 
@@ -1081,6 +1263,11 @@ function pulseUpiAppOptions() {
 }
 
 function handleQuickPayLauncher() {
+  if (getPaymentDeviceProfile().key === "desktop") {
+    showPaymentFeedback(getPaymentDeviceProfile().defaultFeedback, "info");
+    return;
+  }
+
   launchUpiApp();
 }
 
@@ -1274,15 +1461,28 @@ function launchUpiApp() {
     return;
   }
 
-  pulseUpiAppOptions();
+  const profile = getPaymentDeviceProfile();
 
-  if (!isMobileDevice()) {
+  if (profile.key === "desktop") {
+    void copyUpiPaymentLink();
+    return;
+  }
+
+  if (profile.key === "ios") {
+    if (state.preferredUpiAppKey && UPI_APP_CONFIG[state.preferredUpiAppKey]) {
+      launchNamedUpiApp(state.preferredUpiAppKey);
+      return;
+    }
+
+    bringQuickPayAppsIntoView();
     showPaymentFeedback(
-      "Scan the QR code with any UPI app on your phone, or copy the UPI ID manually.",
+      "Choose the UPI app you want to use below. On iPhone, tapping the exact app button gives the cleanest payment handoff.",
       "info"
     );
     return;
   }
+
+  pulseUpiAppOptions();
 
   if (Date.now() < state.upiLaunchCooldownUntil) {
     showPaymentFeedback("The payment app is already opening. Please wait a moment before trying again.", "info");
@@ -1298,9 +1498,7 @@ function launchUpiApp() {
   syncPaymentAttemptStart(state.externalPaymentAttempt);
   updatePaymentAttemptUi();
   showPaymentFeedback(
-    isIosDevice()
-      ? "Trying to open a UPI app on your iPhone with the exact amount filled in. If nothing opens, use one of the quick-pay buttons below or scan the QR code."
-      : "Your phone should now show the installed UPI apps with the exact amount filled in. If nothing opens, use one of the quick-pay buttons below or scan the QR code.",
+    "Your Android phone should now show the installed UPI apps with the exact amount filled in. If nothing opens, use one of the quick-pay app buttons below or scan the QR code.",
     "info"
   );
   openUpiLink(state.currentOrder.payment.upiLink);
@@ -1323,7 +1521,6 @@ function launchNamedUpiApp(appKey) {
   }
 
   if (!isMobileDevice()) {
-    pulseUpiAppOptions();
     showPaymentFeedback(
       "Open this page on your phone to launch a UPI app directly, or scan the QR code from your desktop screen.",
       "info"
@@ -1343,6 +1540,8 @@ function launchNamedUpiApp(appKey) {
     return;
   }
 
+  state.preferredUpiAppKey = appKey;
+  updateDeviceAwarePaymentUi();
   pulseUpiAppOptions();
   elements.paymentApp.value = appConfig.label;
   state.currentOrder.payment.upiLink = buildUpiLink();
@@ -1355,7 +1554,7 @@ function launchNamedUpiApp(appKey) {
   const iPhoneAppHint = isIosDevice() && appConfig.iosScheme
     ? `Opening ${appConfig.label} on iPhone.`
     : isIosDevice()
-      ? `Use ${appConfig.label} if it is installed on your iPhone, otherwise try another UPI app below.`
+      ? `Trying ${appConfig.label} on iPhone. If iOS does not open it, try another UPI app button below or use the QR code.`
       : `Opening a standard UPI payment request for better Android compatibility. If your phone asks which app to use, choose ${appConfig.label}.`;
   showPaymentFeedback(
     `${iPhoneAppHint} After payment, switch back here and submit the transaction ID and your UPI ID. If ${appConfig.label} says the amount was not debited, the payment did not go through. Retry with the QR code, another UPI app, or another bank account.`,
@@ -1488,11 +1687,42 @@ function handleManualPaymentOutcome(status) {
 
 async function copyUpiId() {
   try {
-    await navigator.clipboard.writeText(APP_CONFIG.upiId);
+    await copyTextToClipboard(APP_CONFIG.upiId);
     showToast("UPI ID copied.");
   } catch (error) {
     showToast("Could not copy the UPI ID on this device.", true);
   }
+}
+
+async function copyUpiPaymentLink() {
+  const upiLink = buildUpiLink();
+  if (!upiLink) {
+    showPaymentFeedback("The payment link is not ready yet. Review the order first so the amount can be generated.", "error");
+    return;
+  }
+
+  try {
+    await copyTextToClipboard(upiLink);
+    showToast("Payment link copied.");
+    showPaymentFeedback(
+      "Payment link copied. Open it on your phone if needed, or simply scan the QR code with any UPI app.",
+      "info"
+    );
+  } catch (error) {
+    showPaymentFeedback(
+      "Desktop browsers cannot open mobile UPI apps directly. Scan the QR code with your phone, or copy the UPI ID manually.",
+      "warning"
+    );
+    showToast("Could not copy the payment link on this device.", true);
+  }
+}
+
+async function copyTextToClipboard(value) {
+  if (!navigator.clipboard?.writeText) {
+    throw new Error("Clipboard unavailable");
+  }
+
+  await navigator.clipboard.writeText(value);
 }
 
 async function confirmUpiPayment(event) {
@@ -2373,11 +2603,12 @@ function showDefaultPaymentFeedback() {
     }
   }
 
+  const profile = getPaymentDeviceProfile();
   const pricing = buildPricingSummary();
   showPaymentFeedback(
     pricing?.convertedToBw
-      ? "Tap Pay Now, a quick-pay app button, or the QR card to start payment. The amount is auto-filled. If no app opens, use the QR code or copy the UPI ID. After payment, submit the exact transaction ID and payer UPI ID."
-      : "Pay with the QR code or any listed UPI app. The amount is auto-filled. If the bank or app says the amount was not debited, retry instead of confirming the order.",
+      ? `${profile.defaultFeedback} The amount already reflects the black and white conversion for this order.`
+      : `${profile.defaultFeedback} If the bank or UPI app says the amount was not debited, retry instead of confirming the order.`,
     "info"
   );
 }
