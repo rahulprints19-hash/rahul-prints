@@ -200,7 +200,9 @@ function bindEvents() {
   elements.paymentSucceededButton.addEventListener("click", () => handleManualPaymentOutcome("success-selected"));
   elements.paymentFailedButton.addEventListener("click", () => handleManualPaymentOutcome("failed-selected"));
   elements.paymentPendingButton.addEventListener("click", () => handleManualPaymentOutcome("pending-selected"));
-  elements.confirmCodButton.addEventListener("click", confirmCodOrder);
+  if (elements.confirmCodButton) {
+    elements.confirmCodButton.addEventListener("click", confirmCodOrder);
+  }
   elements.downloadInvoiceButton.addEventListener("click", downloadInvoice);
   elements.newOrderButton.addEventListener("click", startFreshOrder);
   elements.quickScrollLinks.forEach((link) => link.addEventListener("click", handleQuickScrollLink));
@@ -1238,13 +1240,15 @@ function updateTimerDisplay() {
 }
 
 function setPaymentMethod(method) {
-  state.paymentMethod = method;
+  state.paymentMethod = "upi";
   elements.methodTabs.forEach((button) => {
-    button.classList.toggle("is-active", button.dataset.method === method);
+    button.classList.toggle("is-active", button.dataset.method === "upi");
   });
-  elements.upiPanel.classList.toggle("is-hidden", method !== "upi");
-  elements.codPanel.classList.toggle("is-hidden", method !== "cod");
-  elements.timerChip.classList.toggle("is-hidden", method !== "upi");
+  elements.upiPanel.classList.remove("is-hidden");
+  if (elements.codPanel) {
+    elements.codPanel.classList.add("is-hidden");
+  }
+  elements.timerChip.classList.remove("is-hidden");
   showDefaultPaymentFeedback();
   updatePaymentAttemptUi();
 }
@@ -1626,7 +1630,9 @@ function handleSuccessfulConfirmation(result) {
   window.clearInterval(state.timerIntervalId);
   elements.timerChip.classList.remove("is-expired");
   elements.upiPanel.classList.add("is-hidden");
-  elements.codPanel.classList.add("is-hidden");
+  if (elements.codPanel) {
+    elements.codPanel.classList.add("is-hidden");
+  }
   elements.paymentSuccess.classList.remove("is-hidden");
   if (state.externalPaymentAttempt) {
     state.externalPaymentAttempt.status = "confirmed";
@@ -1789,18 +1795,24 @@ function toggleSubmitting(isSubmitting) {
   elements.bhimLaunchButton.disabled = isSubmitting || state.timerExpired;
   elements.otherUpiLaunchButton.disabled = isSubmitting || state.timerExpired;
   elements.confirmPaymentButton.disabled = isSubmitting || state.timerExpired;
-  elements.confirmCodButton.disabled = isSubmitting;
   elements.upiLaunchButton.disabled = isSubmitting || state.timerExpired;
   elements.copyUpiButton.disabled = isSubmitting || state.timerExpired;
   elements.confirmPaymentButton.classList.toggle("is-loading", isSubmitting);
-  elements.confirmCodButton.classList.toggle("is-loading", isSubmitting);
+  if (elements.confirmCodButton) {
+    elements.confirmCodButton.disabled = isSubmitting;
+    elements.confirmCodButton.classList.toggle("is-loading", isSubmitting);
+  }
 
   if (isSubmitting) {
     elements.confirmPaymentButton.innerHTML = '<span class="btn-spinner" aria-hidden="true"></span> Verifying Payment';
-    elements.confirmCodButton.innerHTML = '<span class="btn-spinner" aria-hidden="true"></span> Creating Order';
+    if (elements.confirmCodButton) {
+      elements.confirmCodButton.innerHTML = '<span class="btn-spinner" aria-hidden="true"></span> Creating Order';
+    }
   } else {
     elements.confirmPaymentButton.innerHTML = '<i class="fas fa-circle-check"></i> Confirm Payment';
-    elements.confirmCodButton.innerHTML = '<i class="fas fa-receipt"></i> Confirm Pickup Order';
+    if (elements.confirmCodButton) {
+      elements.confirmCodButton.innerHTML = '<i class="fas fa-receipt"></i> Confirm Pickup Order';
+    }
   }
 
   if (!isSubmitting) {
@@ -2313,14 +2325,6 @@ function showDefaultPaymentFeedback() {
   }
 
   if (elements.paymentSection.classList.contains("is-hidden")) {
-    return;
-  }
-
-  if (state.paymentMethod === "cod") {
-    showPaymentFeedback(
-      "Cash on pickup will create the receipt immediately, and payment will stay pending until collection.",
-      "info"
-    );
     return;
   }
 
