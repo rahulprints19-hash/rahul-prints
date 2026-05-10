@@ -2,7 +2,7 @@ const APP_CONFIG = window.APP_CONFIG || {
   businessName: "Rahul Prints",
   businessEmail: "owner@example.com",
   businessPhone: "+919345574203",
-  upiId: "rahulsiva190@okicici",
+  upiId: "rahulsiva190@oksbi",
   upiPayeeName: "Rahul Siva",
   upiMerchantCode: "",
   maxForwardablePdfMb: 18,
@@ -1275,14 +1275,6 @@ function launchUpiApp() {
     return;
   }
 
-  if (isIosDevice()) {
-    showPaymentFeedback(
-      "Choose Google Pay, PhonePe, Paytm, BHIM, or another UPI app below. The amount is already filled in automatically.",
-      "info"
-    );
-    return;
-  }
-
   if (Date.now() < state.upiLaunchCooldownUntil) {
     showPaymentFeedback("The payment app is already opening. Please wait a moment before trying again.", "info");
     return;
@@ -1297,7 +1289,9 @@ function launchUpiApp() {
   syncPaymentAttemptStart(state.externalPaymentAttempt);
   updatePaymentAttemptUi();
   showPaymentFeedback(
-    "Your phone should now show the installed UPI apps with the exact amount filled in. If nothing opens, use one of the quick-pay buttons below or scan the QR code.",
+    isIosDevice()
+      ? "Trying to open a UPI app on your iPhone with the exact amount filled in. If nothing opens, use one of the quick-pay buttons below or scan the QR code."
+      : "Your phone should now show the installed UPI apps with the exact amount filled in. If nothing opens, use one of the quick-pay buttons below or scan the QR code.",
     "info"
   );
   openUpiLink(state.currentOrder.payment.upiLink);
@@ -2373,8 +2367,8 @@ function showDefaultPaymentFeedback() {
   const pricing = buildPricingSummary();
   showPaymentFeedback(
     pricing?.convertedToBw
-      ? "Tap Pay Now, a quick-pay app button, or the QR card to start payment. On Android, the phone should show installed UPI apps. On iPhone, use the app buttons below the QR. After payment, submit the exact transaction ID and payer UPI ID."
-      : "Pay with the QR code or any listed UPI app. The amount is auto-filled. After payment, submit the exact transaction ID and payer UPI ID. If the app said the amount was not debited, retry instead of confirming.",
+      ? "Tap Pay Now, a quick-pay app button, or the QR card to start payment. The amount is auto-filled. If no app opens, use the QR code or copy the UPI ID. After payment, submit the exact transaction ID and payer UPI ID."
+      : "Pay with the QR code or any listed UPI app. The amount is auto-filled. If the bank or app says the amount was not debited, retry instead of confirming the order.",
     "info"
   );
 }

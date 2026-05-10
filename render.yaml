@@ -18,7 +18,7 @@ services:
       - key: BUSINESS_PHONE
         value: "+919345574203"
       - key: UPI_ID
-        value: rahulsiva190@okicici
+        value: rahulsiva190@oksbi
       - key: PRICE_BW
         value: "1"
       - key: PRICE_COLOR
