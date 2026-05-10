@@ -869,13 +869,18 @@ function buildUpiParams() {
     return new URLSearchParams();
   }
 
+  const orderReference = String(state.currentOrder.orderId || "").replace(/[^A-Z0-9]/gi, "").slice(0, 35);
   const params = {
     pa: APP_CONFIG.upiId,
     pn: APP_CONFIG.upiPayeeName || APP_CONFIG.businessName,
     am: state.currentOrder.amount.toFixed(2),
     cu: "INR",
-    tn: `Rahul Prints order ${state.currentOrder.orderId}`,
+    tn: orderReference ? `RP-${orderReference}` : "Rahul-Prints",
   };
+
+  if (orderReference) {
+    params.tr = orderReference;
+  }
 
   if (APP_CONFIG.upiMerchantCode) {
     params.mc = APP_CONFIG.upiMerchantCode;
