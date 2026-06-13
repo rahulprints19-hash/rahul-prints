@@ -37,6 +37,11 @@ const state = {
   preferredUpiAppKey: "",
   scrollAnimationFrameId: null,
   scrollTargetTimerId: null,
+  previewPdf: null,
+  previewPage: 1,
+  previewScale: 1,
+  previewRotation: 0,
+  previewRenderTask: null,
 };
 
 const elements = {};
@@ -145,6 +150,7 @@ document.addEventListener("DOMContentLoaded", () => {
   applyPublicConfig();
   configurePdfWorker();
   bindEvents();
+  initialiseExperience();
   refreshPricingPreview();
 });
 
@@ -236,6 +242,41 @@ function wireElements() {
     "paymentFlowStepOne",
     "paymentFlowStepTwo",
     "paymentFlowStepThree",
+    "heroDropZone",
+    "heroBrowseButton",
+    "heroFileLimit",
+    "uploadDropZone",
+    "uploadFileLimit",
+    "uploadProgress",
+    "uploadProgressBar",
+    "uploadProgressText",
+    "selectedFileCard",
+    "selectedFileName",
+    "selectedFileMeta",
+    "removeFileButton",
+    "pdfPreviewPanel",
+    "pdfPreviewCanvas",
+    "previewSkeleton",
+    "previewDocumentName",
+    "previewZoomOut",
+    "previewZoomIn",
+    "previewZoomLabel",
+    "previewRotate",
+    "previewFullscreen",
+    "previewPrevious",
+    "previewNext",
+    "previewPageNumber",
+    "previewPageCount",
+    "pageRange",
+    "binding",
+    "staple",
+    "themeToggle",
+    "searchButton",
+    "searchDialog",
+    "globalSearchInput",
+    "searchResults",
+    "mobileMenuButton",
+    "topNav",
   ].forEach((id) => {
     elements[id] = document.getElementById(id);
   });
@@ -244,6 +285,7 @@ function wireElements() {
   elements.paymentProgressItems = Array.from(document.querySelectorAll("[data-payment-step]"));
   elements.quickScrollLinks = Array.from(document.querySelectorAll("[data-scroll-target]"));
   elements.mobileUpiApps = document.querySelector(".mobile-upi-apps");
+  elements.journeySteps = Array.from(document.querySelectorAll("[data-journey-step]"));
 }
 
 function applyPublicConfig() {
@@ -263,6 +305,9 @@ function applyPublicConfig() {
   elements.supportPhoneLink.textContent = `Call ${APP_CONFIG.businessPhone}`;
   elements.contactPhoneText.textContent = APP_CONFIG.businessPhone;
   elements.contactEmailText.textContent = APP_CONFIG.businessEmail;
+  const fileLimitLabel = `${getMaxForwardablePdfMb()} MB`;
+  if (elements.heroFileLimit) elements.heroFileLimit.textContent = fileLimitLabel;
+  if (elements.uploadFileLimit) elements.uploadFileLimit.textContent = fileLimitLabel;
   updateDeviceAwarePaymentUi();
 }
 
@@ -367,6 +412,249 @@ function bindEvents() {
   elements.methodTabs.forEach((button) =>
     button.addEventListener("click", () => setPaymentMethod(button.dataset.method))
   );
+  bindExperienceEvents();
+}
+
+function initialiseExperience() {
+  initialiseTheme();
+  renderSearchResults("");
+  updateJourneyStep("upload");
+  updateUploadExperience();
+  if (window.lucide) window.lucide.createIcons();
+}
+
+function bindExperienceEvents() {
+  elements.heroBrowseButton?.addEventListener("click", () => elements.fileInput.click());
+  elements.heroDropZone?.addEventListener("click", (event) => {
+    if (!event.target.closest("button")) elements.fileInput.click();
+  });
+  elements.heroDropZone?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      elements.fileInput.click();
+    }
+  });
+
+  [elements.heroDropZone, elements.uploadDropZone].filter(Boolean).forEach((dropZone) => {
+    ["dragenter", "dragover"].forEach((type) => dropZone.addEventListener(type, (event) => {
+      event.preventDefault();
+      dropZone.classList.add("is-dragging");
+    }));
+    ["dragleave", "drop"].forEach((type) => dropZone.addEventListener(type, (event) => {
+      event.preventDefault();
+      dropZone.classList.remove("is-dragging");
+    }));
+    dropZone.addEventListener("drop", handleFileDrop);
+  });
+
+  elements.removeFileButton?.addEventListener("click", clearSelectedFile);
+  elements.previewZoomIn?.addEventListener("click", () => changePreviewScale(0.15));
+  elements.previewZoomOut?.addEventListener("click", () => changePreviewScale(-0.15));
+  elements.previewRotate?.addEventListener("click", () => {
+    state.previewRotation = (state.previewRotation + 90) % 360;
+    renderPreviewPage();
+  });
+  elements.previewPrevious?.addEventListener("click", () => changePreviewPage(-1));
+  elements.previewNext?.addEventListener("click", () => changePreviewPage(1));
+  elements.previewPageNumber?.addEventListener("change", () => {
+    const page = Number(elements.previewPageNumber.value || 1);
+    state.previewPage = Math.max(1, Math.min(state.previewPdf?.numPages || 1, page));
+    renderPreviewPage();
+  });
+  elements.previewFullscreen?.addEventListener("click", () => {
+    if (!document.fullscreenElement) elements.pdfPreviewPanel?.requestFullscreen?.();
+    else document.exitFullscreen?.();
+  });
+
+  elements.themeToggle?.addEventListener("click", toggleTheme);
+  elements.searchButton?.addEventListener("click", openSearch);
+  elements.globalSearchInput?.addEventListener("input", (event) => renderSearchResults(event.target.value));
+  elements.searchResults?.addEventListener("click", handleSearchSelection);
+  elements.mobileMenuButton?.addEventListener("click", toggleMobileMenu);
+  elements.topNav?.addEventListener("click", () => closeMobileMenu());
+  document.addEventListener("keydown", handleGlobalShortcut);
+  window.addEventListener("scroll", () => document.querySelector(".site-header")?.classList.toggle("is-scrolled", window.scrollY > 20), { passive: true });
+}
+
+function handleFileDrop(event) {
+  const file = Array.from(event.dataTransfer?.files || []).find(isPdfFile);
+  if (!file) {
+    showToast("Please drop a PDF file.", true);
+    return;
+  }
+  const transfer = new DataTransfer();
+  transfer.items.add(file);
+  elements.fileInput.files = transfer.files;
+  elements.fileInput.dispatchEvent(new Event("change", { bubbles: true }));
+  scrollToElementWithHeaderOffset(elements.uploadForm, { duration: 360 });
+}
+
+function clearSelectedFile() {
+  elements.fileInput.value = "";
+  elements.fileInput.dispatchEvent(new Event("change", { bubbles: true }));
+  showToast("PDF removed from this order.");
+}
+
+function updateUploadExperience(file = elements.fileInput?.files?.[0], progress = null, status = "idle") {
+  if (!elements.selectedFileCard) return;
+  const hasFile = Boolean(file);
+  const isWorking = status === "working";
+  const isReady = status === "ready";
+  elements.uploadProgress.classList.toggle("is-hidden", !isWorking);
+  elements.selectedFileCard.classList.toggle("is-hidden", !hasFile || isWorking);
+  elements.pdfPreviewPanel.classList.toggle("is-hidden", !hasFile);
+  elements.uploadDropZone?.classList.toggle("has-file", hasFile);
+  elements.heroDropZone?.classList.toggle("has-file", hasFile);
+
+  if (!hasFile) {
+    elements.uploadProgressBar.style.width = "0%";
+    return;
+  }
+
+  const total = Number(progress?.totalPages || 0);
+  const processed = Number(progress?.processedPages || 0);
+  const percentage = total ? Math.max(8, Math.round((processed / total) * 100)) : isReady ? 100 : 12;
+  elements.uploadProgressBar.style.width = `${percentage}%`;
+  elements.uploadProgressText.textContent = total ? `Analysing page ${processed} of ${total} - ${percentage}%` : "Opening and checking your PDF...";
+  elements.selectedFileName.textContent = file.name;
+  elements.selectedFileMeta.textContent = `${formatFileSize(file.size)}${state.pdfAnalysis ? ` - ${state.pdfAnalysis.totalPages} pages` : " - PDF"}`;
+  elements.selectedFileCard.classList.toggle("is-ready", isReady);
+}
+
+function formatFileSize(bytes) {
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+async function loadPdfPreview(file) {
+  if (!file || !window.pdfjsLib || !elements.pdfPreviewCanvas) return;
+  try {
+    elements.previewSkeleton.classList.remove("is-hidden");
+    const data = await file.arrayBuffer();
+    state.previewPdf = await window.pdfjsLib.getDocument({ data }).promise;
+    state.previewPage = 1;
+    state.previewScale = 1;
+    state.previewRotation = 0;
+    elements.previewDocumentName.textContent = file.name;
+    elements.previewPageCount.textContent = String(state.previewPdf.numPages);
+    elements.previewPageNumber.max = String(state.previewPdf.numPages);
+    await renderPreviewPage();
+  } catch (error) {
+    elements.previewSkeleton?.classList.add("is-hidden");
+  }
+}
+
+async function renderPreviewPage() {
+  if (!state.previewPdf || !elements.pdfPreviewCanvas) return;
+  state.previewRenderTask?.cancel?.();
+  const page = await state.previewPdf.getPage(state.previewPage);
+  const viewport = page.getViewport({ scale: state.previewScale, rotation: state.previewRotation });
+  const canvas = elements.pdfPreviewCanvas;
+  const context = canvas.getContext("2d");
+  canvas.width = Math.ceil(viewport.width);
+  canvas.height = Math.ceil(viewport.height);
+  elements.previewPageNumber.value = String(state.previewPage);
+  elements.previewZoomLabel.textContent = `${Math.round(state.previewScale * 100)}%`;
+  elements.previewPrevious.disabled = state.previewPage <= 1;
+  elements.previewNext.disabled = state.previewPage >= state.previewPdf.numPages;
+  state.previewRenderTask = page.render({ canvasContext: context, viewport });
+  try {
+    await state.previewRenderTask.promise;
+    elements.previewSkeleton.classList.add("is-hidden");
+  } catch (error) {
+    if (error?.name !== "RenderingCancelledException") throw error;
+  }
+}
+
+function changePreviewScale(delta) {
+  state.previewScale = Math.max(0.55, Math.min(2, state.previewScale + delta));
+  renderPreviewPage();
+}
+
+function changePreviewPage(delta) {
+  state.previewPage = Math.max(1, Math.min(state.previewPdf?.numPages || 1, state.previewPage + delta));
+  renderPreviewPage();
+}
+
+function initialiseTheme() {
+  const saved = localStorage.getItem("rahulprints-theme");
+  const preferred = window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  applyTheme(saved || preferred);
+}
+
+function toggleTheme() {
+  applyTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark");
+}
+
+function applyTheme(theme) {
+  document.documentElement.dataset.theme = theme;
+  localStorage.setItem("rahulprints-theme", theme);
+  const dark = theme === "dark";
+  elements.themeToggle?.setAttribute("aria-label", dark ? "Switch to light mode" : "Switch to dark mode");
+  if (elements.themeToggle) elements.themeToggle.innerHTML = `<i data-lucide="${dark ? "sun" : "moon"}"></i>`;
+  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", dark ? "#0b1020" : "#f7f8fb");
+  if (window.lucide) window.lucide.createIcons();
+}
+
+const SEARCH_ITEMS = [
+  { label: "Upload a PDF", detail: "Start a new print order", target: "uploadForm", icon: "upload-cloud" },
+  { label: "Black and white printing", detail: "Choose the affordable print mode", target: "uploadForm", icon: "palette" },
+  { label: "Copies and paper size", detail: "Update print settings", target: "uploadForm", icon: "settings-2" },
+  { label: "How it works", detail: "See the four-step process", target: "how-it-works", icon: "route" },
+  { label: "Pricing", detail: "See B/W and color rates", target: "order", icon: "badge-indian-rupee" },
+  { label: "Contact Rahul Prints", detail: "Get help with an order", target: "contact", icon: "headphones" },
+];
+
+function openSearch() {
+  elements.searchDialog?.showModal();
+  elements.globalSearchInput.value = "";
+  renderSearchResults("");
+  window.setTimeout(() => elements.globalSearchInput?.focus(), 40);
+}
+
+function renderSearchResults(query) {
+  if (!elements.searchResults) return;
+  const normalised = String(query || "").trim().toLowerCase();
+  const matches = SEARCH_ITEMS.filter((item) => `${item.label} ${item.detail}`.toLowerCase().includes(normalised));
+  elements.searchResults.innerHTML = matches.length ? matches.map((item) => `
+    <button type="button" data-search-target="${item.target}"><i data-lucide="${item.icon}"></i><span><strong>${item.label}</strong><small>${item.detail}</small></span><i data-lucide="arrow-up-right"></i></button>
+  `).join("") : '<div class="search-empty">No matching pages or settings.</div>';
+  if (window.lucide) window.lucide.createIcons();
+}
+
+function handleSearchSelection(event) {
+  const button = event.target.closest("[data-search-target]");
+  if (!button) return;
+  elements.searchDialog.close();
+  const target = document.getElementById(button.dataset.searchTarget);
+  if (target) scrollToElementWithHeaderOffset(target, { duration: 360 });
+}
+
+function handleGlobalShortcut(event) {
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+    event.preventDefault();
+    openSearch();
+  }
+}
+
+function toggleMobileMenu() {
+  const open = !elements.topNav.classList.contains("is-open");
+  elements.topNav.classList.toggle("is-open", open);
+  elements.mobileMenuButton.setAttribute("aria-expanded", String(open));
+}
+
+function closeMobileMenu() {
+  elements.topNav?.classList.remove("is-open");
+  elements.mobileMenuButton?.setAttribute("aria-expanded", "false");
+}
+
+function updateJourneyStep(step) {
+  const order = ["upload", "settings", "review", "payment", "done"];
+  const activeIndex = Math.max(0, order.indexOf(step));
+  elements.journeySteps?.forEach((item, index) => {
+    item.classList.toggle("is-current", index === activeIndex);
+    item.classList.toggle("is-complete", index < activeIndex);
+  });
 }
 
 async function handleFileSelection(event) {
@@ -385,6 +673,9 @@ async function handleFileSelection(event) {
 
   if (!file) {
     elements.fileName.textContent = "No PDF selected yet.";
+    state.previewPdf = null;
+    updateUploadExperience();
+    updateJourneyStep("upload");
     updateBlackWhiteModeUi();
     return;
   }
@@ -392,6 +683,7 @@ async function handleFileSelection(event) {
   if (!isPdfFile(file)) {
     event.target.value = "";
     elements.fileName.textContent = "Only PDF files are supported for automatic pricing.";
+    updateUploadExperience();
     updateBlackWhiteModeUi();
     showToast("Please upload a PDF file. Page detection and pricing rely on PDF analysis.", true);
     return;
@@ -400,6 +692,7 @@ async function handleFileSelection(event) {
   if (file.size > getMaxForwardablePdfBytes()) {
     event.target.value = "";
     elements.fileName.textContent = `PDF must stay within ${getMaxForwardablePdfMb()} MB for automatic owner email forwarding.`;
+    updateUploadExperience();
     updateBlackWhiteModeUi();
     showToast(
       `This PDF is too large to email after payment. Please upload a PDF below ${getMaxForwardablePdfMb()} MB.`,
@@ -417,6 +710,9 @@ async function handleFileSelection(event) {
     colorPages: 0,
   };
   elements.fileName.textContent = `Opening ${file.name}...`;
+  updateUploadExperience(file, state.analysisProgress, "working");
+  updateJourneyStep("upload");
+  loadPdfPreview(file);
   refreshPricingPreview();
 
   try {
@@ -433,6 +729,7 @@ async function handleFileSelection(event) {
       elements.fileName.textContent = progress.totalPages
         ? `Analyzing ${file.name} (${progress.processedPages}/${progress.totalPages} pages)...`
         : `Opening ${file.name}...`;
+      updateUploadExperience(file, progress, "working");
       refreshPricingPreview();
     });
     if (state.analysisRunId !== analysisRunId) {
@@ -441,9 +738,11 @@ async function handleFileSelection(event) {
 
     state.isAnalyzingPdf = false;
     state.analysisProgress = null;
-    elements.fileName.textContent = `${file.name} analyzed successfully.`;
+    elements.fileName.textContent = `${file.name} analysed successfully.`;
+    updateUploadExperience(file, null, "ready");
+    updateJourneyStep("settings");
     refreshPricingPreview();
-    showToast("PDF analyzed. Review the detected black and white pages, color pages, and total price.");
+    showToast("Upload complete. Your PDF is ready for printing.");
   } catch (error) {
     if (state.analysisRunId !== analysisRunId) {
       return;
@@ -454,6 +753,7 @@ async function handleFileSelection(event) {
     state.analysisProgress = null;
     refreshPricingPreview();
     elements.fileName.textContent = `${file.name} could not be analyzed.`;
+    updateUploadExperience(file, null, "error");
     showToast(getFriendlyPdfAnalysisErrorMessage(error), true);
   }
 }
@@ -673,6 +973,7 @@ function handleOrderReview(event) {
   try {
     state.currentOrder = buildOrderFromForm();
     state.paymentMethod = "upi";
+    updateJourneyStep("payment");
     renderPaymentSession({
       restartTimer: true,
       resetConfirmationFields: true,
@@ -697,7 +998,14 @@ function buildOrderFromForm(existingMeta = {}) {
   const customerPhone = elements.phone.value.trim();
   const customerEmail = elements.email.value.trim();
   const paperSize = elements.paperSize.value;
-  const notes = elements.notes.value.trim();
+  const printSide = document.querySelector('input[name="printSide"]:checked')?.value || "Single-sided";
+  const orientation = document.querySelector('input[name="orientation"]:checked')?.value || "Portrait";
+  const binding = elements.binding?.value || "No binding";
+  const staple = elements.staple?.checked ? "Stapled" : "No staple";
+  const pageRange = elements.pageRange?.value.trim() || "All pages";
+  const customerNotes = elements.notes.value.trim();
+  const settingsNote = `Print settings: ${printSide}; ${orientation}; ${binding}; ${staple}; Pages: ${pageRange}.`;
+  const notes = customerNotes ? `${settingsNote} Customer note: ${customerNotes}` : settingsNote;
 
   if (!customerName || !customerPhone || !customerEmail) {
     throw new Error("Please fill in customer name, phone, and email.");
@@ -725,6 +1033,11 @@ function buildOrderFromForm(existingMeta = {}) {
       copies: pricing.copies,
       paperSize,
       notes,
+      printSide,
+      orientation,
+      binding,
+      staple: elements.staple?.checked || false,
+      pageRange,
       colorType: pricing.convertedToBw ? "bw-only" : "mixed",
       bwPages: pricing.bwPages,
       colorPages: pricing.colorPages,
@@ -891,6 +1204,7 @@ function renderPaymentSession({ restartTimer, resetConfirmationFields, keepScrol
 
   clearPaymentFeedback();
   setPaymentSessionState(true);
+  updateJourneyStep("payment");
   setPaymentProgress("pay");
   setPaymentMethod(state.paymentMethod || "upi");
   createUpiQr();
@@ -2087,6 +2401,7 @@ function handleSuccessfulConfirmation(result) {
   updatePaymentAttemptUi();
   clearPaymentFeedback();
   setPaymentProgress("receipt");
+  updateJourneyStep("done");
 
   const receipt = result.receipt || {};
   const isCod = receipt.paymentMethod === "Cash on Pickup";
@@ -2866,6 +3181,9 @@ function startFreshOrder() {
   elements.uploadForm.reset();
   elements.fileInput.value = "";
   elements.fileName.textContent = "No PDF selected yet.";
+  state.previewPdf = null;
+  updateUploadExperience();
+  updateJourneyStep("upload");
   state.pdfAnalysis = null;
   state.forceBlackWhite = false;
   state.paymentMethod = "upi";
@@ -2880,9 +3198,10 @@ function startFreshOrder() {
 }
 
 function showToast(message, isError = false) {
-  elements.toast.textContent = message;
+  elements.toast.innerHTML = `<span class="toast-icon"><i data-lucide="${isError ? "circle-x" : "circle-check"}"></i></span><span class="toast-message">${escapeHtml(message)}</span>`;
   elements.toast.classList.toggle("is-error", isError);
   elements.toast.classList.add("is-visible");
+  if (window.lucide) window.lucide.createIcons();
   window.clearTimeout(showToast.timer);
   showToast.timer = window.setTimeout(() => {
     elements.toast.classList.remove("is-visible");

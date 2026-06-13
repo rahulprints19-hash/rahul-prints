@@ -3,191 +3,143 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="Rahul Prints - professional print ordering with Razorpay checkout, PDF invoices, and fast email confirmations.">
-  <title>Rahul Prints | Professional Print Orders</title>
+  <meta name="description" content="Upload your PDF, choose print settings, pay securely, and collect from Rahul Prints in Puducherry.">
+  <meta name="theme-color" content="#f7f8fb">
+  <title>Rahul Prints | Upload. Print. Collect.</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Sora:wght@600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
   <link rel="stylesheet" href="/styles.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" defer></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.2/jspdf.umd.min.js" defer></script>
   <script src="https://checkout.razorpay.com/v1/checkout.js" defer></script>
+  <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js" defer></script>
   <script src="/config.js" defer></script>
   <script src="/app.js" defer></script>
 </head>
 <body>
+  <a class="skip-link" href="#uploadForm">Skip to print order</a>
   <header class="site-header">
     <div class="container header-shell">
       <a href="#home" class="brand">
-        <span class="brand-mark"><i class="fas fa-print"></i></span>
+        <span class="brand-mark" aria-hidden="true"><i data-lucide="printer"></i></span>
         <span class="brand-copy">
           <strong>Rahul Prints</strong>
-          <small>Fast print orders in Puducherry</small>
-          <em class="brand-status">Razorpay checkout, invoice, and file-forwarding workflow live</em>
+          <small>Campus printing, simplified</small>
         </span>
       </a>
       <div class="header-actions">
-        <nav class="top-nav">
-          <a href="#services">Services</a>
-          <a href="#uploadForm" data-scroll-target="uploadForm">Order</a>
-          <a href="#contact">Contact</a>
+        <nav id="topNav" class="top-nav" aria-label="Primary navigation">
+          <a href="#home">Home</a>
+          <a href="#uploadForm" data-scroll-target="uploadForm">Upload</a>
+          <a href="#how-it-works">How it works</a>
+          <a href="#contact">About</a>
         </nav>
-        <a href="#uploadForm" class="header-cta" data-scroll-target="uploadForm">Start Order</a>
+        <button type="button" id="searchButton" class="icon-button" aria-label="Open search" title="Search (Ctrl+K)"><i data-lucide="search"></i></button>
+        <button type="button" id="themeToggle" class="icon-button" aria-label="Switch to dark mode"><i data-lucide="moon"></i></button>
+        <a href="#uploadForm" class="header-cta" data-scroll-target="uploadForm">Print a PDF <i data-lucide="arrow-up-right"></i></a>
+        <button type="button" id="mobileMenuButton" class="icon-button mobile-menu-button" aria-expanded="false" aria-controls="topNav" aria-label="Open navigation"><i data-lucide="menu"></i></button>
       </div>
     </div>
   </header>
 
   <main>
     <section id="home" class="hero">
+      <div class="hero-orb hero-orb-one" aria-hidden="true"></div>
+      <div class="hero-orb hero-orb-two" aria-hidden="true"></div>
       <div class="container hero-grid">
         <div class="hero-copy">
-          <span class="eyebrow">Production-ready ordering flow</span>
-          <h1>Upload, pay online securely, and receive your order invoice instantly.</h1>
-          <p>
-            Rahul Prints now supports Razorpay checkout for UPI, cards, net banking, and wallets,
-            automatic PDF invoice generation, and email delivery for both customer and owner.
-          </p>
-          <div class="hero-chips">
-            <span class="hero-chip"><i class="fas fa-file-pdf"></i> Auto page detection</span>
-            <span class="hero-chip"><i class="fas fa-envelope-open-text"></i> Owner email forwarding</span>
-            <span class="hero-chip"><i class="fas fa-shield-check"></i> Verified payment receipt</span>
-          </div>
+          <span class="eyebrow"><span class="status-dot"></span> Now accepting online print orders</span>
+          <h1>Your PDFs, printed<br><span>without the queue.</span></h1>
+          <p>Upload a document, see the exact price, pay securely, and collect it from Rahul Prints. Built for assignments, notes, records, and everything due tomorrow.</p>
           <div class="hero-actions">
-            <a href="#uploadForm" class="btn btn-primary" data-scroll-target="uploadForm">Place an Order</a>
-            <a href="#contact" class="btn btn-secondary">Talk to Rahul</a>
+            <a href="#uploadForm" class="btn btn-primary" data-scroll-target="uploadForm"><i data-lucide="upload-cloud"></i> Upload your PDF</a>
+            <a href="#how-it-works" class="btn btn-secondary">See how it works <i data-lucide="arrow-down"></i></a>
           </div>
-          <div class="hero-points">
-            <span><i class="fas fa-circle-check"></i> Razorpay secure checkout</span>
-            <span><i class="fas fa-circle-check"></i> Visible payment timer</span>
-            <span><i class="fas fa-circle-check"></i> PDF invoice by email</span>
-          </div>
-          <div class="hero-stats">
-            <article class="hero-stat-card">
-              <strong>Transparent totals</strong>
-              <span>Customers see the exact B/W, color, copies, and total before they pay.</span>
-            </article>
-            <article class="hero-stat-card">
-              <strong>Counter-ready flow</strong>
-              <span>No manual price calculation, no chasing files, and no unclear payment notes.</span>
-            </article>
-            <article class="hero-stat-card">
-              <strong>Owner delivery built in</strong>
-              <span>The original customer file and generated invoice can reach the print desk automatically.</span>
-            </article>
+          <div class="hero-points" aria-label="Service benefits">
+            <span><i data-lucide="shield-check"></i> Secure upload</span>
+            <span><i data-lucide="zap"></i> Instant pricing</span>
+            <span><i data-lucide="clock-3"></i> Quick pickup</span>
           </div>
         </div>
         <div class="hero-panel">
-          <div class="hero-card hero-preview-card">
-            <div class="hero-card-top">
-              <div>
-                <p class="hero-card-label">Payment desk preview</p>
-                <h2>Designed for fast walk-in printing</h2>
-              </div>
-              <span class="hero-badge">Live invoice flow</span>
-            </div>
-            <div class="hero-status-strip">
-              <span><i class="fas fa-bolt"></i> Faster than manual desk entry</span>
-              <span><i class="fas fa-receipt"></i> Payment proof captured</span>
-              <span><i class="fas fa-envelope"></i> Customer + owner email flow</span>
-            </div>
-            <div class="hero-flow-list">
-              <article class="hero-flow-item">
-                <span class="hero-flow-step">01</span>
-                <div>
-                  <strong>Upload and analyse</strong>
-                  <p>Detect total pages, color pages, and black & white pricing from the PDF.</p>
-                </div>
-              </article>
-              <article class="hero-flow-item">
-                <span class="hero-flow-step">02</span>
-                <div>
-                  <strong>Collect payment cleanly</strong>
-                  <p>Generate the exact amount, open secure checkout, and let Razorpay handle the payment method cleanly.</p>
-                </div>
-              </article>
-              <article class="hero-flow-item">
-                <span class="hero-flow-step">03</span>
-                <div>
-                  <strong>Send to print desk instantly</strong>
-                  <p>Email the payment slip and the customer PDF so the shop can print immediately.</p>
-                </div>
-              </article>
-            </div>
-            <div class="hero-metrics">
-              <div class="hero-metric">
-                <span>Payment slip</span>
-                <strong>Professional PDF</strong>
-              </div>
-              <div class="hero-metric">
-                <span>Customer file</span>
-                <strong>Owner inbox ready</strong>
-              </div>
-              <div class="hero-metric">
-                <span>Designed for</span>
-                <strong>Mobile + Desktop</strong>
-              </div>
-            </div>
+          <div id="heroDropZone" class="hero-upload-card" role="button" tabindex="0" aria-label="Choose a PDF to print">
+            <div class="upload-illustration" aria-hidden="true"><i data-lucide="file-up"></i></div>
+            <span class="upload-kicker">Start your print order</span>
+            <h2>Drop a PDF here</h2>
+            <p>or choose one from your device</p>
+            <button type="button" id="heroBrowseButton" class="btn btn-primary">Choose PDF</button>
+            <small>PDF only, up to <span id="heroFileLimit">18 MB</span></small>
+            <div class="upload-security"><i data-lucide="lock-keyhole"></i> Your file is used only to prepare this order</div>
           </div>
         </div>
       </div>
+      <div class="container process-line" aria-label="Order process">
+        <span><b>1</b> Upload PDF</span><i data-lucide="arrow-right"></i><span><b>2</b> Choose settings</span><i data-lucide="arrow-right"></i><span><b>3</b> Pay</span><i data-lucide="arrow-right"></i><span><b>4</b> Collect</span>
+      </div>
     </section>
 
-    <section id="services" class="section section-soft">
+    <section id="services" class="section section-soft features-section">
       <div class="container">
         <div class="section-heading">
-          <span class="eyebrow">Services</span>
-          <h2>Everything needed for print-ready orders</h2>
-          <p class="section-copy">A customer can upload a PDF, pay in the same flow, and leave with a clear payment record while the print desk receives the original file.</p>
+          <span class="eyebrow">Made for student life</span>
+          <h2>Printing should be the easy part.</h2>
+          <p class="section-copy">No price guessing, no file sharing across five apps, and no waiting at the counter.</p>
         </div>
         <div class="service-grid">
           <article class="service-card">
-            <i class="fas fa-file-pdf"></i>
-            <h3>Document Printing</h3>
-            <p>Automatic PDF color analysis for accurate B/W and color pricing.</p>
+            <i data-lucide="timer"></i>
+            <h3>Fast printing</h3>
+            <p>Send the job before you arrive and spend less time waiting.</p>
           </article>
           <article class="service-card">
-            <i class="fas fa-qrcode"></i>
-            <h3>Razorpay Payments</h3>
-            <p>Use one secure checkout for UPI, cards, net banking, and wallets without sharing a personal payment ID.</p>
+            <i data-lucide="shield-check"></i>
+            <h3>Secure uploads</h3>
+            <p>Your PDF goes directly into the print workflow after verified payment.</p>
           </article>
           <article class="service-card">
-            <i class="fas fa-file-invoice"></i>
-            <h3>Instant Invoices</h3>
-            <p>Generate a polished customer PDF and send email confirmations automatically.</p>
+            <i data-lucide="badge-indian-rupee"></i>
+            <h3>Affordable pricing</h3>
+            <p>Choose B/W when color is not needed and see your savings instantly.</p>
+          </article>
+          <article class="service-card">
+            <i data-lucide="calculator"></i>
+            <h3>Instant calculation</h3>
+            <p>Every page is analysed so your final total is clear before checkout.</p>
           </article>
         </div>
       </div>
     </section>
 
-    <section class="section studio-proof">
+    <section id="how-it-works" class="section studio-proof">
       <div class="container">
         <div class="proof-shell">
           <div class="section-heading proof-heading">
-            <span class="eyebrow">Why It Feels Professional</span>
-            <h2>Built like a real print desk system, not just a file upload page</h2>
-            <p class="section-copy">The visual upgrade keeps the same working order flow, but presents it with the clarity and confidence of a production storefront.</p>
+            <span class="eyebrow">How it works</span>
+            <h2>From PDF to pickup in four simple steps.</h2>
+            <p class="section-copy">A guided flow keeps the price, payment, and collection details clear at every step.</p>
           </div>
           <div class="proof-grid">
             <article class="proof-card">
               <span class="proof-index">01</span>
-              <h3>Clear before payment</h3>
-              <p>Customers can see analysis, copy count, price per copy, and total before opening checkout.</p>
+              <h3>Upload your PDF</h3>
+              <p>Drag, drop, or browse. We automatically detect pages and color usage.</p>
             </article>
             <article class="proof-card">
               <span class="proof-index">02</span>
-              <h3>Guided payment step</h3>
-              <p>The checkout, timer, payment verification, and receipt generation happen in one organized workflow.</p>
+              <h3>Choose print settings</h3>
+              <p>Select color mode, copies, paper size, sides, orientation, and finishing.</p>
             </article>
             <article class="proof-card">
               <span class="proof-index">03</span>
-              <h3>Immediate paperwork</h3>
-              <p>Receipt PDFs and email updates make the order feel dependable instead of manually handled.</p>
+              <h3>Pay securely</h3>
+              <p>Complete checkout with Razorpay and get an automatically verified receipt.</p>
             </article>
             <article class="proof-card">
               <span class="proof-index">04</span>
-              <h3>Ready for future growth</h3>
-              <p>The interface can keep expanding without needing to rewrite the payment and order logic underneath.</p>
+              <h3>Collect your prints</h3>
+              <p>Your confirmed file reaches the print desk, ready for preparation and pickup.</p>
             </article>
           </div>
         </div>
@@ -197,39 +149,29 @@
     <section id="order" class="section">
       <div class="container">
         <div class="section-heading">
-          <span class="eyebrow">Order Desk</span>
-          <h2>Submit your print request</h2>
-          <p class="section-copy">Review the job, complete payment inside secure checkout, and let server-side verification unlock the receipt automatically.</p>
+          <span class="eyebrow">Create an order</span>
+          <h2>Set up your print in a minute.</h2>
+          <p class="section-copy">Upload once, adjust everything in one place, and watch the total update automatically.</p>
         </div>
 
-        <div class="order-brief">
+        <div class="order-brief trust-brief">
           <div class="order-brief-copy">
-            <strong>Designed to look polished while keeping the same working backend flow.</strong>
-            <p>The upload, pricing, Razorpay payment, invoice, and owner-delivery process stays exactly connected to the logic you already deployed.</p>
+            <strong>A clear path from upload to collection.</strong>
+            <p>Your PDF is analysed before payment. The print desk receives it only with the confirmed order details.</p>
           </div>
           <div class="order-brief-tags">
-            <span><i class="fas fa-check-circle"></i> Exact PDF analysis</span>
-            <span><i class="fas fa-check-circle"></i> Guided Razorpay verification</span>
-            <span><i class="fas fa-check-circle"></i> Invoice-ready receipt</span>
+            <span><i data-lucide="scan-search"></i> Exact PDF analysis</span>
+            <span><i data-lucide="shield-check"></i> Verified payment</span>
+            <span><i data-lucide="receipt-text"></i> Instant receipt</span>
           </div>
         </div>
 
-        <div class="journey-strip">
-          <article class="journey-card">
-            <span class="journey-step">Step 1</span>
-            <strong>Upload PDF</strong>
-            <p>Automatic page analysis gives the customer a transparent total before payment.</p>
-          </article>
-          <article class="journey-card">
-            <span class="journey-step">Step 2</span>
-            <strong>Collect Payment</strong>
-            <p>Open secure checkout, finish payment, and receive the verified receipt on the same page.</p>
-          </article>
-          <article class="journey-card">
-            <span class="journey-step">Step 3</span>
-            <strong>Print Desk Ready</strong>
-            <p>The owner receives both the original PDF and the payment slip by email.</p>
-          </article>
+        <div class="journey-strip checkout-steps" aria-label="Checkout progress">
+          <article class="journey-card is-current" data-journey-step="upload"><span class="journey-step">1</span><strong>Upload</strong></article>
+          <article class="journey-card" data-journey-step="settings"><span class="journey-step">2</span><strong>Settings</strong></article>
+          <article class="journey-card" data-journey-step="review"><span class="journey-step">3</span><strong>Review</strong></article>
+          <article class="journey-card" data-journey-step="payment"><span class="journey-step">4</span><strong>Payment</strong></article>
+          <article class="journey-card" data-journey-step="done"><span class="journey-step">5</span><strong>Done</strong></article>
         </div>
 
         <div class="order-grid">
@@ -237,7 +179,7 @@
             <div class="info-card">
               <div class="info-card-head">
                 <i class="fas fa-tags"></i>
-                <h3>Price Guide</h3>
+                <h3>Simple pricing</h3>
               </div>
               <div class="price-row">
                 <span>B/W page</span>
@@ -251,7 +193,7 @@
             <div class="info-card">
               <div class="info-card-head">
                 <i class="fas fa-circle-info"></i>
-                <h3>Payment Rules</h3>
+                <h3>Good to know</h3>
               </div>
               <ul class="info-list">
                 <li>Checkout sessions stay active for <span id="paymentWindowDisplay">5 minutes</span>.</li>
@@ -321,25 +263,57 @@
               </div>
             </div>
 
-            <form id="uploadForm" class="panel">
+            <form id="uploadForm" class="panel" novalidate>
               <div class="panel-head">
-                <span class="panel-kicker">Customer details + file upload</span>
-                <h3>Order Form</h3>
-                <p>Upload a file, add print details, and continue to payment.</p>
+                <span class="panel-kicker">Step 1 of 4</span>
+                <h3>Upload and customise</h3>
+                <p>We will scan your PDF and calculate the exact price automatically.</p>
               </div>
 
-              <label class="field">
-                <span>Upload File</span>
-                <div class="upload-box">
+              <label class="field upload-field">
+                <span>PDF document</span>
+                <div id="uploadDropZone" class="upload-box">
                   <input type="file" id="fileInput" accept=".pdf,application/pdf">
                   <div class="upload-box-copy">
-                    <i class="fas fa-cloud-arrow-up"></i>
-                    <strong>Select a PDF file</strong>
-                    <small>Pricing, payment slip details, and owner email forwarding are based on the uploaded PDF.</small>
+                    <span class="upload-icon"><i data-lucide="cloud-upload"></i></span>
+                    <strong>Drag and drop your PDF</strong>
+                    <small>or click to browse from your device</small>
+                    <span class="upload-limit">PDF only, max <span id="uploadFileLimit">18 MB</span></span>
                   </div>
+                </div>
+                <div id="uploadProgress" class="upload-progress is-hidden" aria-live="polite">
+                  <div class="upload-progress-track"><span id="uploadProgressBar"></span></div>
+                  <span id="uploadProgressText">Preparing PDF...</span>
+                </div>
+                <div id="selectedFileCard" class="selected-file-card is-hidden">
+                  <span class="file-type-icon"><i data-lucide="file-text"></i></span>
+                  <div class="selected-file-copy"><strong id="selectedFileName">Document.pdf</strong><span id="selectedFileMeta">PDF</span></div>
+                  <span class="file-ready"><i data-lucide="circle-check"></i> Ready for printing</span>
+                  <button type="button" id="removeFileButton" class="icon-button" aria-label="Remove selected PDF"><i data-lucide="x"></i></button>
                 </div>
                 <small id="fileName" class="field-note">No PDF selected yet.</small>
               </label>
+
+              <section id="pdfPreviewPanel" class="pdf-preview-panel is-hidden" aria-label="PDF preview">
+                <div class="pdf-preview-toolbar">
+                  <div><span class="panel-kicker">Document preview</span><strong id="previewDocumentName">Your PDF</strong></div>
+                  <div class="preview-actions">
+                    <button type="button" id="previewZoomOut" class="icon-button" aria-label="Zoom out"><i data-lucide="zoom-out"></i></button>
+                    <span id="previewZoomLabel">100%</span>
+                    <button type="button" id="previewZoomIn" class="icon-button" aria-label="Zoom in"><i data-lucide="zoom-in"></i></button>
+                    <button type="button" id="previewRotate" class="icon-button" aria-label="Rotate preview"><i data-lucide="rotate-cw"></i></button>
+                    <button type="button" id="previewFullscreen" class="icon-button" aria-label="View preview fullscreen"><i data-lucide="maximize-2"></i></button>
+                  </div>
+                </div>
+                <div class="pdf-preview-stage"><canvas id="pdfPreviewCanvas"></canvas><div id="previewSkeleton" class="preview-skeleton"></div></div>
+                <div class="pdf-page-controls">
+                  <button type="button" id="previewPrevious" class="btn btn-secondary btn-small"><i data-lucide="chevron-left"></i> Previous</button>
+                  <span>Page <input id="previewPageNumber" type="number" min="1" value="1" aria-label="Preview page number"> of <b id="previewPageCount">1</b></span>
+                  <button type="button" id="previewNext" class="btn btn-secondary btn-small">Next <i data-lucide="chevron-right"></i></button>
+                </div>
+              </section>
+
+              <div class="settings-heading"><span class="panel-kicker">Step 2 of 4</span><h4>Print settings</h4><p>Tap an option to update your order.</p></div>
 
               <div class="print-mode-card">
                 <div class="print-mode-copy">
@@ -388,6 +362,28 @@
                 </label>
               </div>
 
+              <div class="settings-grid">
+                <fieldset class="choice-group">
+                  <legend>Sides</legend>
+                  <div class="segmented-control">
+                    <label><input type="radio" name="printSide" value="Single-sided" checked><span><i data-lucide="file"></i> Single</span></label>
+                    <label><input type="radio" name="printSide" value="Double-sided"><span><i data-lucide="copy"></i> Double</span></label>
+                  </div>
+                </fieldset>
+                <fieldset class="choice-group">
+                  <legend>Orientation</legend>
+                  <div class="segmented-control">
+                    <label><input type="radio" name="orientation" value="Portrait" checked><span><i data-lucide="rectangle-vertical"></i> Portrait</span></label>
+                    <label><input type="radio" name="orientation" value="Landscape"><span><i data-lucide="rectangle-horizontal"></i> Landscape</span></label>
+                  </div>
+                </fieldset>
+                <label class="field"><span>Page range</span><input type="text" id="pageRange" placeholder="All pages or e.g. 1-5, 8"></label>
+                <label class="field"><span>Binding</span><select id="binding"><option value="No binding">No binding</option><option value="Spiral binding">Spiral binding</option><option value="Soft binding">Soft binding</option></select></label>
+                <label class="choice-check"><input type="checkbox" id="staple"><span><i data-lucide="paperclip"></i><b>Staple pages</b><small>Add a staple to each copy</small></span></label>
+              </div>
+
+              <div class="settings-heading customer-heading"><span class="panel-kicker">Step 3 of 4</span><h4>Pickup details</h4><p>We use these details for your receipt and order updates.</p></div>
+
               <label class="field">
                 <span>Name</span>
                 <input type="text" id="name" placeholder="Customer name" required>
@@ -410,9 +406,8 @@
                 <textarea id="notes" rows="4" placeholder="Binding, one-sided print, urgent request, etc."></textarea>
               </label>
 
-              <button type="submit" class="btn btn-primary btn-full">
-                <i class="fas fa-credit-card"></i>
-                Review Order and Pay
+              <button type="submit" class="btn btn-primary btn-full order-submit">
+                Review order <i data-lucide="arrow-right"></i>
               </button>
 
               <div class="form-footnote">
@@ -669,10 +664,11 @@
               </div>
 
                <div id="paymentSuccess" class="success-card is-hidden" tabindex="-1" aria-live="polite">
+                <div class="confetti" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
                 <div class="success-hero">
-                  <div class="success-mark"><i class="fas fa-circle-check"></i></div>
+                  <div class="success-mark"><i data-lucide="check"></i></div>
                   <div class="success-copy">
-                    <span class="success-badge">Receipt Ready</span>
+                    <span class="success-badge">Order confirmed</span>
                     <h3 id="successTitle">Payment Completed Successfully.</h3>
                     <p id="successLead">Your order is confirmed, the payment slip is ready, and the customer PDF has been forwarded to the print desk email.</p>
                   </div>
@@ -680,13 +676,14 @@
                 <div id="deliveryStatus" class="delivery-status"></div>
                 <div class="success-actions">
                   <button type="button" id="downloadInvoiceButton" class="btn btn-primary">
-                    <i class="fas fa-file-arrow-down"></i>
-                    Download Payment Slip PDF
+                    <i data-lucide="download"></i>
+                    Download receipt
                   </button>
                   <button type="button" id="newOrderButton" class="btn btn-secondary">
-                    <i class="fas fa-rotate-right"></i>
-                    Place Another Order
+                    <i data-lucide="refresh-cw"></i>
+                    Print again
                   </button>
+                  <a href="#home" class="btn btn-quiet"><i data-lucide="home"></i> Go home</a>
                 </div>
               </div>
             </section>
@@ -698,9 +695,9 @@
     <section id="contact" class="section section-soft">
       <div class="container">
         <div class="section-heading">
-          <span class="eyebrow">Contact</span>
-          <h2>Reach Rahul Prints directly</h2>
-          <p class="section-copy">Customers can complete orders online, but support is still one tap away if they need help with payment or file preparation.</p>
+          <span class="eyebrow">Need a hand?</span>
+          <h2>Real support, one tap away.</h2>
+          <p class="section-copy">Questions about a file, payment, or pickup? Rahul Prints is here to help.</p>
         </div>
         <div class="contact-grid">
           <article class="contact-card">
@@ -726,15 +723,25 @@
   <footer class="site-footer">
     <div class="container footer-shell">
       <p>Rahul Prints</p>
-      <p>Professional printing with faster digital order handling.</p>
+      <p>Upload. Print. Collect. Made in Puducherry for busy students.</p>
     </div>
   </footer>
 
-  <a href="#uploadForm" class="mobile-order-bar" data-scroll-target="uploadForm">
-    <i class="fas fa-bolt"></i>
-    <span>Start Print Order</span>
-  </a>
+  <nav class="mobile-bottom-nav" aria-label="Mobile navigation">
+    <a href="#home" class="is-active"><i data-lucide="home"></i><span>Home</span></a>
+    <a href="#uploadForm" data-scroll-target="uploadForm" class="mobile-upload-action"><i data-lucide="plus"></i><span>Upload</span></a>
+    <a href="#order"><i data-lucide="receipt-text"></i><span>Order</span></a>
+    <a href="#contact"><i data-lucide="user-round"></i><span>Profile</span></a>
+  </nav>
 
-  <div id="toast" class="toast" aria-live="polite"></div>
+  <dialog id="searchDialog" class="search-dialog">
+    <form method="dialog" class="search-shell">
+      <div class="search-input-wrap"><i data-lucide="search"></i><input id="globalSearchInput" type="search" placeholder="Search pages, settings, or help..." autocomplete="off"><button value="cancel" class="key-hint">ESC</button></div>
+      <div id="searchResults" class="search-results" aria-live="polite"></div>
+      <p class="search-footer"><span><kbd>Ctrl</kbd> <kbd>K</kbd> to open</span><span><kbd>Enter</kbd> to select</span></p>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"><span class="toast-icon"></span><span class="toast-message"></span></div>
 </body>
 </html>
