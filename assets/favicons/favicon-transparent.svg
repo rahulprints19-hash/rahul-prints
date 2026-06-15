@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="rp-t-title rp-t-desc">
+  <title id="rp-t-title">Rahul Prints RP transparent favicon</title>
+  <desc id="rp-t-desc">A simplified Rahul Prints favicon mark optimized for small browser tabs and app icons.</desc>
+  <defs>
+    <radialGradient id="rp-t-bg" cx="36%" cy="25%" r="78%">
+      <stop offset="0" stop-color="#1a3b68"/>
+      <stop offset="0.46" stop-color="#0b1a32"/>
+      <stop offset="1" stop-color="#061225"/>
+    </radialGradient>
+    <linearGradient id="rp-t-rim" x1="128" y1="42" x2="384" y2="470" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.26"/>
+      <stop offset="0.44" stop-color="#5acfff" stop-opacity="0.08"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0.22"/>
+    </linearGradient>
+    <linearGradient id="rp-t-p" x1="245" y1="100" x2="440" y2="400" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ff2f9b"/>
+      <stop offset="0.46" stop-color="#ff2f9b"/>
+      <stop offset="0.58" stop-color="#16d9ff"/>
+      <stop offset="1" stop-color="#16d9ff"/>
+    </linearGradient>
+    <linearGradient id="rp-t-accent" x1="328" y1="350" x2="440" y2="405" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ff2f9b"/>
+      <stop offset="1" stop-color="#16d9ff"/>
+    </linearGradient>
+  </defs>
+  <g class="rp-monogram" stroke="#061225" stroke-width="30" stroke-linejoin="round" stroke-linecap="round" paint-order="stroke fill">
+    <path d="M148 1466L901 1466Q1147 1466 1269.5 1349Q1392 1232 1392 1016Q1392 794 1258.5 669Q1125 544 851 544L603 544L603 0L148 0ZM603 841L714 841Q845 841 898 886.5Q951 932 951 1003Q951 1072 905 1120Q859 1168 732 1168L603 1168Z" transform="matrix(0.13900 0 0 -0.20500 231.428 409.530)" fill="url(#rp-t-p)"/>
+    <path d="M156 0L156 1466L911 1466Q1121 1466 1232 1430Q1343 1394 1411 1296.5Q1479 1199 1479 1059Q1479 937 1427 848.5Q1375 760 1284 705Q1226 670 1125 647Q1206 620 1243 593Q1268 575 1315.5 516Q1363 457 1379 425L1598 0L1086 0L844 448Q798 535 762 561Q713 595 651 595L611 595L611 0ZM611 872L802 872Q833 872 922 892Q967 901 995.5 938Q1024 975 1024 1023Q1024 1094 979 1132Q934 1170 810 1170L611 1170Z" transform="matrix(0.13900 0 0 -0.20500 56.316 409.530)" fill="#ffffff"/>
+  </g>
+</svg>

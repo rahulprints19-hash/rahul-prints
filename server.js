@@ -21,6 +21,7 @@ if (typeof process.loadEnvFile === "function") {
 }
 
 const ROOT = __dirname;
+const ASSETS_DIR = path.join(ROOT, "assets");
 const DATA_DIR = path.join(ROOT, "data");
 const ORDERS_FILE = path.join(DATA_DIR, "orders.json");
 const PAYMENT_ATTEMPTS_FILE = path.join(DATA_DIR, "payment-attempts.json");
@@ -72,14 +73,19 @@ const STATIC_FILES = {
   "/": "rahul-prints-pro-with-email.html",
   "/app.js": "app.js",
   "/styles.css": "styles.css",
-  "/favicon.ico": null,
+  "/favicon.ico": "assets/favicons/favicon.ico",
+  "/favicon.svg": "assets/favicons/favicon.svg",
+  "/apple-touch-icon.png": "assets/favicons/favicon-180.png",
 };
 
 const CONTENT_TYPES = {
   ".html": "text/html; charset=utf-8",
   ".css": "text/css; charset=utf-8",
+  ".ico": "image/x-icon",
   ".js": "application/javascript; charset=utf-8",
   ".json": "application/json; charset=utf-8",
+  ".png": "image/png",
+  ".svg": "image/svg+xml; charset=utf-8",
   ".txt": "text/plain; charset=utf-8",
 };
 const PAYMENT_ATTEMPT_STATUSES = new Set([
@@ -149,23 +155,45 @@ function sendJson(response, statusCode, payload) {
 function serveFile(response, pathname) {
   const fileName = STATIC_FILES[pathname];
 
-  if (fileName === null) {
-    response.writeHead(204);
-    response.end();
-    return;
-  }
-
   if (!fileName) {
     sendJson(response, 404, { success: false, error: "Not found." });
     return;
   }
 
-  const absolutePath = path.join(ROOT, fileName);
+  serveAbsoluteFile(response, path.join(ROOT, fileName));
+}
+
+function serveAssetFile(response, pathname) {
+  let decodedPathname = pathname;
+
+  try {
+    decodedPathname = decodeURIComponent(pathname);
+  } catch (error) {
+    sendJson(response, 400, { success: false, error: "Invalid asset path." });
+    return;
+  }
+
+  const absolutePath = path.resolve(ROOT, decodedPathname.replace(/^\/+/, ""));
+  const assetsRoot = path.resolve(ASSETS_DIR);
+
+  if (absolutePath !== assetsRoot && !absolutePath.startsWith(`${assetsRoot}${path.sep}`)) {
+    sendJson(response, 404, { success: false, error: "Not found." });
+    return;
+  }
+
+  serveAbsoluteFile(response, absolutePath);
+}
+
+function serveAbsoluteFile(response, absolutePath) {
   const extension = path.extname(absolutePath);
 
   fs.readFile(absolutePath, (error, data) => {
     if (error) {
-      sendJson(response, 500, { success: false, error: "Unable to load static file." });
+      const isMissing = error.code === "ENOENT" || error.code === "EISDIR";
+      sendJson(response, isMissing ? 404 : 500, {
+        success: false,
+        error: isMissing ? "Not found." : "Unable to load static file.",
+      });
       return;
     }
 
@@ -2076,6 +2104,11 @@ const server = http.createServer(async (request, response) => {
 
   if (request.method === "GET" && pathname === "/api/upi/qr") {
     await handleUpiQrRequest(response, requestUrl);
+    return;
+  }
+
+  if (request.method === "GET" && pathname.startsWith("/assets/")) {
+    serveAssetFile(response, pathname);
     return;
   }
 

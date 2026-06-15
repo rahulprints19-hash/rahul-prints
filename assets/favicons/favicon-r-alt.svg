@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="r-alt-title r-alt-desc">
+  <title id="r-alt-title">Rahul Prints R favicon alternate</title>
+  <desc id="r-alt-desc">A simplified Rahul Prints favicon mark optimized for small browser tabs and app icons.</desc>
+  <defs>
+    <radialGradient id="r-alt-bg" cx="36%" cy="25%" r="78%">
+      <stop offset="0" stop-color="#1a3b68"/>
+      <stop offset="0.46" stop-color="#0b1a32"/>
+      <stop offset="1" stop-color="#061225"/>
+    </radialGradient>
+    <linearGradient id="r-alt-rim" x1="128" y1="42" x2="384" y2="470" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.26"/>
+      <stop offset="0.44" stop-color="#5acfff" stop-opacity="0.08"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0.22"/>
+    </linearGradient>
+    <linearGradient id="r-alt-p" x1="245" y1="100" x2="440" y2="400" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ff2f9b"/>
+      <stop offset="0.46" stop-color="#ff2f9b"/>
+      <stop offset="0.58" stop-color="#16d9ff"/>
+      <stop offset="1" stop-color="#16d9ff"/>
+    </linearGradient>
+    <linearGradient id="r-alt-accent" x1="328" y1="350" x2="440" y2="405" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ff2f9b"/>
+      <stop offset="1" stop-color="#16d9ff"/>
+    </linearGradient>
+  </defs>
+  <circle cx="256" cy="256" r="246" fill="url(#r-alt-bg)"/>
+  <circle cx="256" cy="256" r="244" fill="none" stroke="url(#r-alt-rim)" stroke-width="4"/>
+  <path d="M91 140C126 82 187 52 256 52C354 52 433 119 455 210" fill="none" stroke="#ffffff" stroke-opacity="0.12" stroke-width="10" stroke-linecap="round"/>
+  <g class="r-alt-mark">
+    <path d="M156 0L156 1466L911 1466Q1121 1466 1232 1430Q1343 1394 1411 1296.5Q1479 1199 1479 1059Q1479 937 1427 848.5Q1375 760 1284 705Q1226 670 1125 647Q1206 620 1243 593Q1268 575 1315.5 516Q1363 457 1379 425L1598 0L1086 0L844 448Q798 535 762 561Q713 595 651 595L611 595L611 0ZM611 872L802 872Q833 872 922 892Q967 901 995.5 938Q1024 975 1024 1023Q1024 1094 979 1132Q934 1170 810 1170L611 1170Z" transform="matrix(0.19000 0 0 -0.22200 89.360 413.452)" fill="#ffffff"/>
+    <g transform="rotate(-18 385 382)">
+      <rect x="327" y="350" width="94" height="28" rx="14" fill="#ff2f9b"/>
+      <rect x="344" y="383" width="94" height="28" rx="14" fill="#16d9ff"/>
+    </g>
+  </g>
+</svg>
