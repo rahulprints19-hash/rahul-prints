@@ -31,7 +31,7 @@
   <header class="site-header">
     <div class="container header-shell">
       <a href="#home" class="brand">
-        <span class="brand-mark" aria-hidden="true"><i data-lucide="printer"></i></span>
+        <span class="brand-mark" aria-hidden="true"><img src="/assets/favicons/favicon-64.png" alt=""></span>
         <span class="brand-copy">
           <strong>Rahul Prints</strong>
           <small>Campus printing, simplified</small>
@@ -354,7 +354,7 @@
                     <button type="button" id="copiesDecreaseButton" class="stepper-button" aria-label="Decrease copies">
                       <i class="fas fa-minus" aria-hidden="true"></i>
                     </button>
-                    <input type="number" id="copies" min="1" max="100" value="1" inputmode="numeric" required>
+                    <input type="number" id="copies" min="1" max="100" value="1" inputmode="numeric" autocomplete="off" required>
                     <button type="button" id="copiesIncreaseButton" class="stepper-button" aria-label="Increase copies">
                       <i class="fas fa-plus" aria-hidden="true"></i>
                     </button>
@@ -385,7 +385,7 @@
                     <label><input type="radio" name="orientation" value="Landscape"><span><i data-lucide="rectangle-horizontal"></i> Landscape</span></label>
                   </div>
                 </fieldset>
-                <label class="field"><span>Page range</span><input type="text" id="pageRange" placeholder="All pages or e.g. 1-5, 8"></label>
+                <label class="field"><span>Page range</span><input type="text" id="pageRange" placeholder="All pages or e.g. 1-5, 8" autocomplete="off"></label>
                 <label class="field"><span>Binding</span><select id="binding"><option value="No binding">No binding</option><option value="Spiral binding">Spiral binding</option><option value="Soft binding">Soft binding</option></select></label>
                 <label class="choice-check"><input type="checkbox" id="staple"><span><i data-lucide="paperclip"></i><b>Staple pages</b><small>Add a staple to each copy</small></span></label>
               </div>
@@ -394,24 +394,24 @@
 
               <label class="field">
                 <span>Name</span>
-                <input type="text" id="name" placeholder="Customer name" required>
+                <input type="text" id="name" placeholder="Customer name" autocomplete="name" required>
               </label>
 
               <div class="field-grid">
                 <label class="field">
                   <span>Phone</span>
-                  <input type="tel" id="phone" placeholder="+91 XXXXX XXXXX" required>
+                  <input type="tel" id="phone" placeholder="+91 XXXXX XXXXX" inputmode="tel" autocomplete="tel" required>
                 </label>
 
                 <label class="field">
                   <span>Email</span>
-                  <input type="email" id="email" placeholder="customer@email.com" required>
+                  <input type="email" id="email" placeholder="customer@email.com" inputmode="email" autocomplete="email" autocapitalize="off" required>
                 </label>
               </div>
 
               <label class="field">
                 <span>Special Instructions</span>
-                <textarea id="notes" rows="4" placeholder="Binding, one-sided print, urgent request, etc."></textarea>
+                <textarea id="notes" rows="4" placeholder="Binding, one-sided print, urgent request, etc." autocomplete="off"></textarea>
               </label>
 
               <button type="submit" class="btn btn-primary btn-full order-submit">
@@ -736,10 +736,10 @@
   </footer>
 
   <nav class="mobile-bottom-nav" aria-label="Mobile navigation">
-    <a href="#home" class="is-active"><i data-lucide="home"></i><span>Home</span></a>
+    <a href="#home" data-scroll-target="home" class="is-active"><i data-lucide="home"></i><span>Home</span></a>
     <a href="#uploadForm" data-scroll-target="uploadForm" class="mobile-upload-action"><i data-lucide="plus"></i><span>Upload</span></a>
-    <a href="#order"><i data-lucide="receipt-text"></i><span>Order</span></a>
-    <a href="#contact"><i data-lucide="user-round"></i><span>Profile</span></a>
+    <a href="#order" data-scroll-target="order"><i data-lucide="receipt-text"></i><span>Order</span></a>
+    <a href="#contact" data-scroll-target="contact"><i data-lucide="user-round"></i><span>Profile</span></a>
   </nav>
 
   <dialog id="searchDialog" class="search-dialog">

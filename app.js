@@ -284,6 +284,7 @@ function wireElements() {
   elements.methodTabs = Array.from(document.querySelectorAll(".method-tab"));
   elements.paymentProgressItems = Array.from(document.querySelectorAll("[data-payment-step]"));
   elements.quickScrollLinks = Array.from(document.querySelectorAll("[data-scroll-target]"));
+  elements.mobileNavLinks = Array.from(document.querySelectorAll(".mobile-bottom-nav a[href^='#']"));
   elements.mobileUpiApps = document.querySelector(".mobile-upi-apps");
   elements.journeySteps = Array.from(document.querySelectorAll("[data-journey-step]"));
 }
@@ -420,6 +421,7 @@ function initialiseExperience() {
   renderSearchResults("");
   updateJourneyStep("upload");
   updateUploadExperience();
+  updateMobileNavActive();
   if (window.lucide) window.lucide.createIcons();
 }
 
@@ -472,8 +474,10 @@ function bindExperienceEvents() {
   elements.searchResults?.addEventListener("click", handleSearchSelection);
   elements.mobileMenuButton?.addEventListener("click", toggleMobileMenu);
   elements.topNav?.addEventListener("click", () => closeMobileMenu());
+  document.addEventListener("click", handleOutsideMobileMenuClick);
   document.addEventListener("keydown", handleGlobalShortcut);
-  window.addEventListener("scroll", () => document.querySelector(".site-header")?.classList.toggle("is-scrolled", window.scrollY > 20), { passive: true });
+  window.addEventListener("resize", closeMobileMenu);
+  window.addEventListener("scroll", handleExperienceScroll, { passive: true });
 }
 
 function handleFileDrop(event) {
@@ -646,6 +650,45 @@ function toggleMobileMenu() {
 function closeMobileMenu() {
   elements.topNav?.classList.remove("is-open");
   elements.mobileMenuButton?.setAttribute("aria-expanded", "false");
+}
+
+function handleOutsideMobileMenuClick(event) {
+  if (!elements.topNav?.classList.contains("is-open")) {
+    return;
+  }
+
+  if (event.target.closest("#topNav") || event.target.closest("#mobileMenuButton")) {
+    return;
+  }
+
+  closeMobileMenu();
+}
+
+function handleExperienceScroll() {
+  document.querySelector(".site-header")?.classList.toggle("is-scrolled", window.scrollY > 20);
+  updateMobileNavActive();
+}
+
+function updateMobileNavActive() {
+  if (!elements.mobileNavLinks?.length) {
+    return;
+  }
+
+  const offset = getStickyHeaderOffset() + 96;
+  let activeId = "home";
+
+  elements.mobileNavLinks.forEach((link) => {
+    const targetId = link.hash?.slice(1);
+    const target = targetId ? document.getElementById(targetId) : null;
+
+    if (target && target.getBoundingClientRect().top <= offset) {
+      activeId = targetId;
+    }
+  });
+
+  elements.mobileNavLinks.forEach((link) => {
+    link.classList.toggle("is-active", link.hash === `#${activeId}`);
+  });
 }
 
 function updateJourneyStep(step) {
@@ -1313,10 +1356,12 @@ function handleQuickScrollLink(event) {
   }
 
   event.preventDefault();
+  closeMobileMenu();
   history.replaceState(null, "", `#${targetId}`);
   scrollToElementWithHeaderOffset(target, {
     duration: 380,
   });
+  window.setTimeout(updateMobileNavActive, 420);
 }
 
 function setPaymentProgress(step) {
