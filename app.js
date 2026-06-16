@@ -635,6 +635,10 @@ function handleSearchSelection(event) {
 }
 
 function handleGlobalShortcut(event) {
+  if (event.key === "Escape") {
+    closeMobileMenu();
+  }
+
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
     event.preventDefault();
     openSearch();
