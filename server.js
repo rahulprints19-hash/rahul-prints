@@ -25,6 +25,7 @@ const ASSETS_DIR = path.join(ROOT, "assets");
 const DATA_DIR = path.join(ROOT, "data");
 const ORDERS_FILE = path.join(DATA_DIR, "orders.json");
 const PAYMENT_ATTEMPTS_FILE = path.join(DATA_DIR, "payment-attempts.json");
+const SETTINGS_FILE = path.join(DATA_DIR, "settings.json");
 const TEMP_UPLOAD_DIR = path.join(DATA_DIR, "tmp");
 const ORDER_ARTIFACTS_DIR = path.join(DATA_DIR, "artifacts");
 const PDF_ANALYSIS_SCRIPT = path.join(ROOT, "pdf_analysis.py");
@@ -48,7 +49,15 @@ const UPI_PAYEE_NAME = sanitizeText(process.env.UPI_PAYEE_NAME) || "Rahul Siva";
 const UPI_MERCHANT_CODE = sanitizeText(process.env.UPI_MERCHANT_CODE);
 const PRICE_BW = Number(process.env.PRICE_BW || 1);
 const PRICE_COLOR = Number(process.env.PRICE_COLOR || 10);
+const SERVICE_CHARGE_ENABLED = resolveOptionalBoolean(process.env.SERVICE_CHARGE_ENABLED) ?? false;
+const SERVICE_CHARGE = Number(process.env.SERVICE_CHARGE || 0);
+const MINIMUM_ORDER_CHARGE = Number(process.env.MINIMUM_ORDER_CHARGE || 0);
 const PAYMENT_TIMEOUT_MINUTES = Number(process.env.PAYMENT_TIMEOUT_MINUTES || 5);
+const ADMIN_USERNAME = sanitizeText(process.env.ADMIN_USERNAME) || "admin";
+const ADMIN_PASSWORD = sanitizeText(process.env.ADMIN_PASSWORD);
+const ADMIN_PASSWORD_SHA256 = sanitizeText(process.env.ADMIN_PASSWORD_SHA256).toLowerCase();
+const ADMIN_SESSION_MINUTES = Number(process.env.ADMIN_SESSION_MINUTES || 720);
+const ADMIN_SESSION_COOKIE = "rp_admin_session";
 const MAIL_PROVIDER = resolveMailProvider();
 const SMTP_SERVICE = sanitizeText(process.env.SMTP_SERVICE);
 const SMTP_HOST = sanitizeText(process.env.SMTP_HOST);
@@ -72,6 +81,7 @@ const RAZORPAY_API_BASE = sanitizeText(process.env.RAZORPAY_API_BASE) || "https:
 const STATIC_FILES = {
   "/": "rahul-prints-pro-with-email.html",
   "/app.js": "app.js",
+  "/portal.js": "portal.js",
   "/styles.css": "styles.css",
   "/favicon.ico": "assets/favicons/favicon.ico",
   "/favicon.svg": "assets/favicons/favicon.svg",
@@ -102,9 +112,20 @@ const PAYMENT_ATTEMPT_STATUSES = new Set([
   "expired",
   "cancelled",
 ]);
+const ORDER_STATUSES = [
+  "Pending",
+  "Paid",
+  "Printing",
+  "Ready For Pickup",
+  "Completed",
+  "Cancelled",
+];
+const ORDER_STATUS_LOOKUP = new Map(ORDER_STATUSES.map((status) => [status.toLowerCase(), status]));
+const ADMIN_SESSIONS = new Map();
 
 let transporter = null;
 const smtpTransportOptions = buildSmtpTransportOptions();
+let runtimeSettings = buildDefaultSettings();
 
 if (MAIL_PROVIDER === "smtp" && smtpTransportOptions) {
   transporter = nodemailer.createTransport(smtpTransportOptions);
@@ -140,14 +161,16 @@ if (!RAZORPAY_KEY_ID || !RAZORPAY_KEY_SECRET) {
   console.warn("Razorpay is not configured. Add RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET before accepting online payments.");
 }
 
-Promise.all([ensureOrdersStore(), ensurePaymentAttemptsStore()]).catch((error) => {
+Promise.all([ensureOrdersStore(), ensurePaymentAttemptsStore(), ensureSettingsStore()]).catch((error) => {
   console.warn("Data store initialization failed:", error.message);
 });
 
-function sendJson(response, statusCode, payload) {
+function sendJson(response, statusCode, payload, extraHeaders = {}) {
   response.writeHead(statusCode, {
     "Content-Type": CONTENT_TYPES[".json"],
     "Cache-Control": "no-store",
+    "X-Content-Type-Options": "nosniff",
+    ...extraHeaders,
   });
   response.end(JSON.stringify(payload));
 }
@@ -452,6 +475,106 @@ function resolveMaxForwardablePdfMb(mailProvider) {
   }
 
   return configuredLimitMb;
+}
+
+function resolveMoneyAmount(value, fallback = 0) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+
+  return Math.max(0, Math.round(parsed * 100) / 100);
+}
+
+function resolveSettingsBoolean(value, fallback = false) {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "number") {
+    return value !== 0;
+  }
+  const parsed = resolveOptionalBoolean(value);
+  return parsed === null ? Boolean(fallback) : parsed;
+}
+
+function buildDefaultSettings() {
+  const now = new Date().toISOString();
+  return {
+    pricing: {
+      bw: resolveMoneyAmount(PRICE_BW, 1),
+      color: resolveMoneyAmount(PRICE_COLOR, 10),
+    },
+    serviceCharge: {
+      enabled: Boolean(SERVICE_CHARGE_ENABLED),
+      fixed: resolveMoneyAmount(SERVICE_CHARGE, 0),
+      minimumOrder: resolveMoneyAmount(MINIMUM_ORDER_CHARGE, 0),
+    },
+    updatedAt: now,
+    updatedBy: "system",
+  };
+}
+
+function normaliseSettings(value, fallback = runtimeSettings || buildDefaultSettings()) {
+  const source = value && typeof value === "object" ? value : {};
+  const sourcePricing = source.pricing && typeof source.pricing === "object" ? source.pricing : source;
+  const sourceService = source.serviceCharge && typeof source.serviceCharge === "object" ? source.serviceCharge : source;
+
+  return {
+    pricing: {
+      bw: resolveMoneyAmount(sourcePricing.bw ?? sourcePricing.bwPagePrice, fallback.pricing.bw),
+      color: resolveMoneyAmount(sourcePricing.color ?? sourcePricing.colorPagePrice, fallback.pricing.color),
+    },
+    serviceCharge: {
+      enabled: resolveSettingsBoolean(sourceService.enabled ?? sourceService.serviceChargeEnabled, fallback.serviceCharge.enabled),
+      fixed: resolveMoneyAmount(sourceService.fixed ?? sourceService.fixedServiceCharge ?? sourceService.serviceCharge, fallback.serviceCharge.fixed),
+      minimumOrder: resolveMoneyAmount(
+        sourceService.minimumOrder ?? sourceService.minimumOrderCharge ?? sourceService.minimumCharge,
+        fallback.serviceCharge.minimumOrder
+      ),
+    },
+    updatedAt: sanitizeText(source.updatedAt) || fallback.updatedAt || new Date().toISOString(),
+    updatedBy: sanitizeText(source.updatedBy) || fallback.updatedBy || "system",
+  };
+}
+
+function buildPublicSettings(settings = runtimeSettings) {
+  return {
+    pricing: {
+      bw: settings.pricing.bw,
+      color: settings.pricing.color,
+    },
+    serviceCharge: {
+      enabled: settings.serviceCharge.enabled,
+      fixed: settings.serviceCharge.fixed,
+      minimumOrder: settings.serviceCharge.minimumOrder,
+    },
+    updatedAt: settings.updatedAt,
+  };
+}
+
+async function ensureSettingsStore() {
+  await fs.promises.mkdir(DATA_DIR, { recursive: true });
+  try {
+    const raw = await fs.promises.readFile(SETTINGS_FILE, "utf8");
+    runtimeSettings = normaliseSettings(JSON.parse(raw || "{}"), buildDefaultSettings());
+  } catch (error) {
+    if (error.code !== "ENOENT") {
+      console.warn("Pricing settings could not be read. Falling back to environment defaults:", error.message);
+    }
+    runtimeSettings = buildDefaultSettings();
+    await fs.promises.writeFile(SETTINGS_FILE, JSON.stringify(runtimeSettings, null, 2), "utf8");
+  }
+}
+
+async function saveSettings(nextSettings, updatedBy = "admin") {
+  runtimeSettings = {
+    ...normaliseSettings(nextSettings, runtimeSettings),
+    updatedAt: new Date().toISOString(),
+    updatedBy,
+  };
+  await fs.promises.mkdir(DATA_DIR, { recursive: true });
+  await fs.promises.writeFile(SETTINGS_FILE, JSON.stringify(runtimeSettings, null, 2), "utf8");
+  return runtimeSettings;
 }
 
 function sanitizePythonExecutable(value) {
@@ -837,6 +960,702 @@ async function updatePaymentAttemptStatus(attemptId, status, extras = {}) {
   return attempts[index];
 }
 
+function normaliseOrderStatus(value, fallback = "Pending") {
+  const normalized = sanitizeText(value)
+    .replace(/[-_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+
+  if (ORDER_STATUS_LOOKUP.has(normalized)) {
+    return ORDER_STATUS_LOOKUP.get(normalized);
+  }
+
+  return ORDER_STATUS_LOOKUP.get(sanitizeText(fallback).toLowerCase()) || "Pending";
+}
+
+function getDefaultOrderStatus(order) {
+  if (sanitizeText(order?.payment?.method) === "cod") {
+    return "Pending";
+  }
+
+  return "Paid";
+}
+
+function getOrderStatus(order) {
+  return normaliseOrderStatus(order?.status || order?.fulfillment?.status, getDefaultOrderStatus(order));
+}
+
+function getOrderStatusSteps(status) {
+  const normalized = normaliseOrderStatus(status);
+  const steps = [
+    { key: "received", label: "Order Received", statuses: ["Pending", "Paid", "Printing", "Ready For Pickup", "Completed"] },
+    { key: "payment", label: "Payment Confirmed", statuses: ["Paid", "Printing", "Ready For Pickup", "Completed"] },
+    { key: "printing", label: "Printing", statuses: ["Printing", "Ready For Pickup", "Completed"] },
+    { key: "ready", label: "Ready For Pickup", statuses: ["Ready For Pickup", "Completed"] },
+    { key: "completed", label: "Completed", statuses: ["Completed"] },
+  ];
+
+  return steps.map((step) => ({
+    key: step.key,
+    label: step.label,
+    complete: step.statuses.includes(normalized),
+    current:
+      normalized === step.label ||
+      (normalized === "Pending" && step.key === "received") ||
+      (normalized === "Paid" && step.key === "payment"),
+  }));
+}
+
+function normaliseEmail(value) {
+  return sanitizeText(value).toLowerCase();
+}
+
+function normalisePhoneDigits(value) {
+  return sanitizeText(value).replace(/\D+/g, "");
+}
+
+function maskValue(value, visibleStart = 2, visibleEnd = 2) {
+  const raw = sanitizeText(value);
+  if (raw.length <= visibleStart + visibleEnd + 1) {
+    return raw ? "•••" : "";
+  }
+
+  return `${raw.slice(0, visibleStart)}•••${raw.slice(-visibleEnd)}`;
+}
+
+function findOrderById(orders, orderId) {
+  const normalizedId = sanitizeText(orderId).toUpperCase();
+  return orders.find((order) => sanitizeText(order?.orderId).toUpperCase() === normalizedId);
+}
+
+function orderMatchesCustomer(order, query = {}) {
+  const email = normaliseEmail(query.email);
+  const phone = normalisePhoneDigits(query.phone);
+  const orderEmail = normaliseEmail(order?.customer?.email);
+  const orderPhone = normalisePhoneDigits(order?.customer?.phone);
+
+  if (email && orderEmail !== email) {
+    return false;
+  }
+
+  if (phone && orderPhone !== phone) {
+    return false;
+  }
+
+  return Boolean((email && orderEmail === email) || (phone && orderPhone === phone));
+}
+
+function getOrderPricingSnapshot(order) {
+  const document = order?.document || {};
+  const printSubtotal = Number(document.printSubtotal || document.pricePerCopy * document.copies || order?.amount || 0);
+  const serviceCharge = Number(document.serviceCharge || 0);
+  const minimumChargeAdjustment = Number(document.minimumChargeAdjustment || 0);
+
+  return {
+    bwPagePrice: Number(document.bwPagePrice ?? PRICE_BW),
+    colorPagePrice: Number(document.colorPagePrice ?? PRICE_COLOR),
+    bwCostPerCopy: Number(document.bwCostPerCopy || 0),
+    colorCostPerCopy: Number(document.colorCostPerCopy || 0),
+    pricePerCopy: Number(document.pricePerCopy || 0),
+    printSubtotal,
+    serviceCharge,
+    minimumOrderCharge: Number(document.minimumOrderCharge || 0),
+    minimumChargeAdjustment,
+    total: Number(order?.amount || printSubtotal + serviceCharge + minimumChargeAdjustment),
+  };
+}
+
+function hasOrderArtifact(order, type) {
+  const absolutePath = resolveOrderArtifactPath(order, type, { allowMissing: true });
+  return Boolean(absolutePath && fs.existsSync(absolutePath));
+}
+
+function buildOrderSummary(order, options = {}) {
+  const status = getOrderStatus(order);
+  const includeSensitive = Boolean(options.includeSensitive);
+  const includeCustomer = includeSensitive || Boolean(options.includeCustomer);
+  const payment = order?.payment || {};
+  const summary = {
+    orderId: sanitizeText(order?.orderId),
+    createdAt: sanitizeText(order?.createdAt),
+    savedAt: sanitizeText(order?.savedAt),
+    status,
+    statusUpdatedAt: sanitizeText(order?.statusUpdatedAt),
+    progress: getOrderStatusSteps(status),
+    amount: Number(order?.amount || 0),
+    pricing: getOrderPricingSnapshot(order),
+    document: {
+      fileName: sanitizeText(order?.document?.fileName || order?.uploadedPdf?.fileName),
+      pagesLabel: sanitizeText(order?.document?.pagesLabel),
+      totalPages: Number(order?.document?.totalPages || 0),
+      copies: Number(order?.document?.copies || 0),
+      paperSize: sanitizeText(order?.document?.paperSize),
+      bwPages: Number(order?.document?.bwPages || 0),
+      colorPages: Number(order?.document?.colorPages || 0),
+      printMode: sanitizeText(order?.document?.printMode),
+      printModeLabel: getPrintModeLabel(order),
+      notes: includeSensitive ? sanitizeText(order?.document?.notes) : "",
+    },
+    payment: {
+      method: getPaymentMethodLabel(order),
+      status: getPaymentStatusLabel(order),
+      app: sanitizeText(payment.app),
+      paidAt: sanitizeText(payment.paidAt),
+      provider: sanitizeText(payment.gatewayProvider || (/razorpay/i.test(payment.app || "") ? "Razorpay" : "")),
+      transactionId: includeSensitive ? sanitizeText(payment.transactionId) : maskValue(payment.transactionId),
+      gatewayOrderId: includeSensitive ? sanitizeText(payment.razorpayOrderId) : "",
+      gatewayPaymentId: includeSensitive ? sanitizeText(payment.razorpayPaymentId) : maskValue(payment.razorpayPaymentId),
+    },
+    artifacts: {
+      invoiceAvailable: hasOrderArtifact(order, "invoice"),
+      uploadAvailable: hasOrderArtifact(order, "upload"),
+      uploadedPdfFileName: sanitizeText(order?.uploadedPdf?.fileName || order?.document?.fileName),
+    },
+  };
+
+  if (includeCustomer) {
+    summary.customer = {
+      name: sanitizeText(order?.customer?.name),
+      phone: includeSensitive ? sanitizeText(order?.customer?.phone) : maskValue(order?.customer?.phone, 3, 2),
+      email: includeSensitive ? sanitizeText(order?.customer?.email) : maskValue(order?.customer?.email, 2, 8),
+    };
+  }
+
+  if (includeSensitive) {
+    summary.notifications = order?.notifications || {};
+    summary.verificationChecks = Array.isArray(order?.verificationChecks) ? order.verificationChecks : [];
+  }
+
+  return summary;
+}
+
+function saveStoredOrders(orders) {
+  return fs.promises.writeFile(ORDERS_FILE, JSON.stringify(orders, null, 2), "utf8");
+}
+
+async function updateStoredOrder(orderId, updater) {
+  const orders = await loadStoredOrders();
+  const index = orders.findIndex((entry) => sanitizeText(entry?.orderId).toUpperCase() === sanitizeText(orderId).toUpperCase());
+
+  if (index < 0) {
+    const error = new Error("Order was not found.");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  const updated = updater(orders[index]);
+  orders[index] = updated;
+  await saveStoredOrders(orders);
+  return updated;
+}
+
+function resolveOrderArtifactPath(order, type, options = {}) {
+  const artifacts = order?.artifacts || {};
+  const relativePath =
+    type === "invoice"
+      ? artifacts.invoicePath || path.join("data", "artifacts", sanitizeOrderDirectoryName(order?.orderId), "invoice.pdf")
+      : artifacts.uploadedPdfPath || path.join("data", "artifacts", sanitizeOrderDirectoryName(order?.orderId), "customer-upload.pdf");
+
+  const absolutePath = path.resolve(ROOT, relativePath);
+  const artifactsRoot = path.resolve(ORDER_ARTIFACTS_DIR);
+  if (absolutePath !== artifactsRoot && !absolutePath.startsWith(`${artifactsRoot}${path.sep}`)) {
+    return "";
+  }
+
+  if (!options.allowMissing && !fs.existsSync(absolutePath)) {
+    return "";
+  }
+
+  return absolutePath;
+}
+
+function sendDownload(response, absolutePath, fileName, contentType = "application/octet-stream") {
+  fs.readFile(absolutePath, (error, data) => {
+    if (error) {
+      sendJson(response, error.code === "ENOENT" ? 404 : 500, {
+        success: false,
+        error: error.code === "ENOENT" ? "File not found." : "Unable to download the file.",
+      });
+      return;
+    }
+
+    response.writeHead(200, {
+      "Content-Type": contentType,
+      "Content-Disposition": `attachment; filename="${sanitizeFileName(fileName)}"`,
+      "Cache-Control": "no-store",
+      "X-Content-Type-Options": "nosniff",
+    });
+    response.end(data);
+  });
+}
+
+function parseCookies(request) {
+  const header = sanitizeText(request.headers.cookie);
+  if (!header) {
+    return {};
+  }
+
+  return header.split(";").reduce((cookies, part) => {
+    const [rawName, ...rawValue] = part.trim().split("=");
+    const name = sanitizeText(rawName);
+    if (!name) {
+      return cookies;
+    }
+
+    try {
+      cookies[name] = decodeURIComponent(rawValue.join("="));
+    } catch {
+      cookies[name] = rawValue.join("=");
+    }
+    return cookies;
+  }, {});
+}
+
+function hashSessionToken(token) {
+  return crypto.createHash("sha256").update(String(token || "")).digest("hex");
+}
+
+function isSecureRequest(request) {
+  return sanitizeText(request.headers["x-forwarded-proto"]).toLowerCase() === "https" || process.env.NODE_ENV === "production";
+}
+
+function buildAdminSessionCookie(request, token, maxAgeSeconds) {
+  const parts = [
+    `${ADMIN_SESSION_COOKIE}=${encodeURIComponent(token)}`,
+    "Path=/",
+    "HttpOnly",
+    "SameSite=Strict",
+    `Max-Age=${Math.max(0, Number(maxAgeSeconds || 0))}`,
+  ];
+
+  if (isSecureRequest(request)) {
+    parts.push("Secure");
+  }
+
+  return parts.join("; ");
+}
+
+function isAdminAuthConfigured() {
+  return Boolean(ADMIN_PASSWORD || ADMIN_PASSWORD_SHA256);
+}
+
+function timingSafeTextEqual(left, right) {
+  const leftBuffer = Buffer.from(String(left || ""));
+  const rightBuffer = Buffer.from(String(right || ""));
+  if (leftBuffer.length !== rightBuffer.length) {
+    return false;
+  }
+
+  return crypto.timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+function isAdminPasswordValid(password) {
+  if (!isAdminAuthConfigured()) {
+    return false;
+  }
+
+  if (ADMIN_PASSWORD_SHA256) {
+    const candidate = crypto.createHash("sha256").update(String(password || "")).digest("hex");
+    return timingSafeTextEqual(candidate, ADMIN_PASSWORD_SHA256);
+  }
+
+  return timingSafeTextEqual(password, ADMIN_PASSWORD);
+}
+
+function pruneAdminSessions() {
+  const now = Date.now();
+  for (const [key, session] of ADMIN_SESSIONS.entries()) {
+    if (!session?.expiresAt || session.expiresAt <= now) {
+      ADMIN_SESSIONS.delete(key);
+    }
+  }
+}
+
+function getAdminSession(request) {
+  pruneAdminSessions();
+  const token = parseCookies(request)[ADMIN_SESSION_COOKIE];
+  if (!token) {
+    return null;
+  }
+
+  const key = hashSessionToken(token);
+  const session = ADMIN_SESSIONS.get(key);
+  if (!session) {
+    return null;
+  }
+
+  session.lastSeenAt = new Date().toISOString();
+  return session;
+}
+
+function requireAdminSession(request, response) {
+  const session = getAdminSession(request);
+  if (!session) {
+    sendJson(response, 401, {
+      success: false,
+      error: isAdminAuthConfigured()
+        ? "Admin login is required."
+        : "Admin login is disabled until ADMIN_PASSWORD or ADMIN_PASSWORD_SHA256 is configured.",
+    });
+    return null;
+  }
+
+  return session;
+}
+
+function parseDate(value) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function startOfToday() {
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  return now;
+}
+
+function addDays(date, days) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function getOrderDate(order) {
+  return parseDate(order?.savedAt || order?.createdAt || order?.payment?.paidAt) || new Date(0);
+}
+
+function isRevenueOrder(order) {
+  const status = getOrderStatus(order);
+  return status !== "Pending" && status !== "Cancelled";
+}
+
+function sumRevenue(orders) {
+  return orders.filter(isRevenueOrder).reduce((total, order) => total + Number(order?.amount || 0), 0);
+}
+
+function buildOrderAnalytics(orders) {
+  const today = startOfToday();
+  const days = Array.from({ length: 14 }, (_, index) => {
+    const date = addDays(today, index - 13);
+    const label = date.toISOString().slice(0, 10);
+    return {
+      label,
+      orders: 0,
+      revenue: 0,
+    };
+  });
+
+  const dailyByLabel = new Map(days.map((item) => [item.label, item]));
+  const printTypes = new Map();
+
+  orders.forEach((order) => {
+    const date = getOrderDate(order);
+    const label = date.toISOString().slice(0, 10);
+    const daily = dailyByLabel.get(label);
+    if (daily) {
+      daily.orders += 1;
+      if (isRevenueOrder(order)) {
+        daily.revenue += Number(order?.amount || 0);
+      }
+    }
+
+    const printType = getPrintModeLabel(order);
+    printTypes.set(printType, (printTypes.get(printType) || 0) + 1);
+  });
+
+  return {
+    dailyOrders: days,
+    printTypes: Array.from(printTypes.entries())
+      .map(([label, count]) => ({ label, count }))
+      .sort((left, right) => right.count - left.count),
+    statusBreakdown: ORDER_STATUSES.map((status) => ({
+      status,
+      count: orders.filter((order) => getOrderStatus(order) === status).length,
+    })),
+  };
+}
+
+function buildDashboardMetrics(orders) {
+  const today = startOfToday();
+  const tomorrow = addDays(today, 1);
+  const weekStart = addDays(today, -6);
+  const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+  const todaysOrders = orders.filter((order) => {
+    const date = getOrderDate(order);
+    return date >= today && date < tomorrow;
+  });
+  const weeklyOrders = orders.filter((order) => getOrderDate(order) >= weekStart);
+  const monthlyOrders = orders.filter((order) => getOrderDate(order) >= monthStart);
+
+  return {
+    totalOrders: orders.length,
+    pendingOrders: orders.filter((order) => getOrderStatus(order) === "Pending").length,
+    completedOrders: orders.filter((order) => getOrderStatus(order) === "Completed").length,
+    cancelledOrders: orders.filter((order) => getOrderStatus(order) === "Cancelled").length,
+    todaysOrders: todaysOrders.length,
+    todaysRevenue: sumRevenue(todaysOrders),
+    weeklyRevenue: sumRevenue(weeklyOrders),
+    monthlyRevenue: sumRevenue(monthlyOrders),
+    totalRevenue: sumRevenue(orders),
+  };
+}
+
+function orderMatchesAdminFilters(summary, filters) {
+  const query = sanitizeText(filters.query).toLowerCase();
+  const status = sanitizeText(filters.status);
+
+  if (status && status !== "all" && summary.status !== normaliseOrderStatus(status)) {
+    return false;
+  }
+
+  if (!query) {
+    return true;
+  }
+
+  const haystack = [
+    summary.orderId,
+    summary.customer?.name,
+    summary.customer?.email,
+    summary.customer?.phone,
+    summary.document?.fileName,
+    summary.payment?.transactionId,
+    summary.payment?.gatewayPaymentId,
+  ].join(" ").toLowerCase();
+
+  return haystack.includes(query);
+}
+
+async function handleAdminLogin(response, request) {
+  const payload = await readJsonBody(request);
+  const username = sanitizeText(payload.username || ADMIN_USERNAME);
+  const password = String(payload.password || "");
+
+  if (!isAdminAuthConfigured()) {
+    sendJson(response, 503, {
+      success: false,
+      error: "Admin login is disabled until ADMIN_PASSWORD or ADMIN_PASSWORD_SHA256 is configured.",
+    });
+    return;
+  }
+
+  if (username !== ADMIN_USERNAME || !isAdminPasswordValid(password)) {
+    sendJson(response, 401, {
+      success: false,
+      error: "Invalid admin credentials.",
+    });
+    return;
+  }
+
+  const token = crypto.randomBytes(32).toString("base64url");
+  const expiresAt = Date.now() + Math.max(5, ADMIN_SESSION_MINUTES) * 60 * 1000;
+  ADMIN_SESSIONS.set(hashSessionToken(token), {
+    username: ADMIN_USERNAME,
+    createdAt: new Date().toISOString(),
+    lastSeenAt: new Date().toISOString(),
+    expiresAt,
+  });
+
+  sendJson(
+    response,
+    200,
+    {
+      success: true,
+      user: { username: ADMIN_USERNAME },
+      expiresAt: new Date(expiresAt).toISOString(),
+    },
+    {
+      "Set-Cookie": buildAdminSessionCookie(request, token, Math.floor((expiresAt - Date.now()) / 1000)),
+    }
+  );
+}
+
+async function handleAdminLogout(response, request) {
+  const token = parseCookies(request)[ADMIN_SESSION_COOKIE];
+  if (token) {
+    ADMIN_SESSIONS.delete(hashSessionToken(token));
+  }
+
+  sendJson(
+    response,
+    200,
+    { success: true },
+    {
+      "Set-Cookie": buildAdminSessionCookie(request, "", 0),
+    }
+  );
+}
+
+async function handleAdminSession(response, request) {
+  const session = getAdminSession(request);
+  sendJson(response, 200, {
+    success: true,
+    authenticated: Boolean(session),
+    configured: isAdminAuthConfigured(),
+    user: session ? { username: session.username } : null,
+    settings: buildPublicSettings(runtimeSettings),
+  });
+}
+
+async function handleAdminDashboard(response, requestUrl) {
+  const orders = await loadStoredOrders();
+  const summaries = orders
+    .map((order) => buildOrderSummary(order, { includeSensitive: true, includeCustomer: true }))
+    .sort((left, right) => new Date(right.savedAt || right.createdAt) - new Date(left.savedAt || left.createdAt));
+  const query = requestUrl.searchParams.get("q");
+  const status = requestUrl.searchParams.get("status");
+  const filtered = summaries.filter((summary) => orderMatchesAdminFilters(summary, { query, status }));
+
+  sendJson(response, 200, {
+    success: true,
+    metrics: buildDashboardMetrics(orders),
+    analytics: buildOrderAnalytics(orders),
+    settings: buildPublicSettings(runtimeSettings),
+    statuses: ORDER_STATUSES,
+    orders: filtered.slice(0, 200),
+  });
+}
+
+async function handleAdminSettingsUpdate(response, request) {
+  const payload = await readJsonBody(request);
+  const nextSettings = await saveSettings(payload.settings || payload, ADMIN_USERNAME);
+  sendJson(response, 200, {
+    success: true,
+    settings: buildPublicSettings(nextSettings),
+    config: buildPublicConfig(),
+  });
+}
+
+async function handleAdminOrderStatusUpdate(response, request, orderId) {
+  const payload = await readJsonBody(request);
+  const requestedStatus = sanitizeText(payload.status)
+    .replace(/[-_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+
+  if (!ORDER_STATUS_LOOKUP.has(requestedStatus)) {
+    sendJson(response, 400, {
+      success: false,
+      error: "Unsupported order status.",
+      statuses: ORDER_STATUSES,
+    });
+    return;
+  }
+
+  const status = ORDER_STATUS_LOOKUP.get(requestedStatus);
+  const updated = await updateStoredOrder(orderId, (order) => ({
+    ...order,
+    status,
+    statusUpdatedAt: new Date().toISOString(),
+  }));
+
+  sendJson(response, 200, {
+    success: true,
+    order: buildOrderSummary(updated, { includeSensitive: true, includeCustomer: true }),
+  });
+}
+
+async function handleAdminOrderDownload(response, requestUrl, orderId) {
+  const type = sanitizeText(requestUrl.searchParams.get("type") || "invoice").toLowerCase() === "upload" ? "upload" : "invoice";
+  const orders = await loadStoredOrders();
+  const order = findOrderById(orders, orderId);
+  if (!order) {
+    sendJson(response, 404, { success: false, error: "Order was not found." });
+    return;
+  }
+
+  const absolutePath = resolveOrderArtifactPath(order, type);
+  if (!absolutePath) {
+    sendJson(response, 404, { success: false, error: "Requested order file is not available on this server." });
+    return;
+  }
+
+  const fileName = type === "invoice"
+    ? `${sanitizeText(order.orderId, "invoice")}.pdf`
+    : sanitizeFileName(order?.uploadedPdf?.fileName || order?.document?.fileName || "customer-upload.pdf");
+  sendDownload(response, absolutePath, fileName, "application/pdf");
+}
+
+async function handleCustomerOrderLookup(response, requestUrl) {
+  const orderId = sanitizeText(requestUrl.searchParams.get("orderId"));
+  const email = requestUrl.searchParams.get("email");
+  const phone = requestUrl.searchParams.get("phone");
+
+  if (!orderId || (!normaliseEmail(email) && !normalisePhoneDigits(phone))) {
+    sendJson(response, 400, {
+      success: false,
+      error: "Enter an order ID plus the email or phone number used for the order.",
+    });
+    return;
+  }
+
+  const orders = await loadStoredOrders();
+  const order = findOrderById(orders, orderId);
+  if (!order || !orderMatchesCustomer(order, { email, phone })) {
+    sendJson(response, 404, {
+      success: false,
+      error: "No matching order was found.",
+    });
+    return;
+  }
+
+  sendJson(response, 200, {
+    success: true,
+    order: buildOrderSummary(order, { includeCustomer: true }),
+  });
+}
+
+async function handleCustomerOrders(response, requestUrl) {
+  const email = requestUrl.searchParams.get("email");
+  const phone = requestUrl.searchParams.get("phone");
+
+  if (!normaliseEmail(email) || !normalisePhoneDigits(phone)) {
+    sendJson(response, 400, {
+      success: false,
+      error: "Enter both email and phone number to view order history.",
+    });
+    return;
+  }
+
+  const orders = await loadStoredOrders();
+  const matches = orders
+    .filter((order) => orderMatchesCustomer(order, { email, phone }))
+    .map((order) => buildOrderSummary(order, { includeCustomer: true }))
+    .sort((left, right) => new Date(right.savedAt || right.createdAt) - new Date(left.savedAt || left.createdAt));
+
+  sendJson(response, 200, {
+    success: true,
+    orders: matches,
+  });
+}
+
+async function handleCustomerInvoiceDownload(response, requestUrl, orderId) {
+  const email = requestUrl.searchParams.get("email");
+  const phone = requestUrl.searchParams.get("phone");
+  const orders = await loadStoredOrders();
+  const order = findOrderById(orders, orderId);
+
+  if (!order || !orderMatchesCustomer(order, { email, phone })) {
+    sendJson(response, 404, {
+      success: false,
+      error: "No matching order was found.",
+    });
+    return;
+  }
+
+  const absolutePath = resolveOrderArtifactPath(order, "invoice");
+  if (!absolutePath) {
+    sendJson(response, 404, {
+      success: false,
+      error: "Invoice is not available on this server.",
+    });
+    return;
+  }
+
+  sendDownload(response, absolutePath, `${sanitizeText(order.orderId, "invoice")}.pdf`, "application/pdf");
+}
+
 function sanitizeOrderDirectoryName(value) {
   return sanitizeText(value, "order").replace(/[^a-z0-9_-]+/gi, "-");
 }
@@ -846,19 +1665,34 @@ function calculatePricing(document) {
   const colorPages = Number(document?.colorPages || 0);
   const totalPages = Number(document?.totalPages || 0);
   const copies = Number(document?.copies || 0);
-  const bwCostPerCopy = bwPages * PRICE_BW;
-  const colorCostPerCopy = colorPages * PRICE_COLOR;
+  const settings = runtimeSettings || buildDefaultSettings();
+  const bwPagePrice = settings.pricing.bw;
+  const colorPagePrice = settings.pricing.color;
+  const bwCostPerCopy = bwPages * bwPagePrice;
+  const colorCostPerCopy = colorPages * colorPagePrice;
   const pricePerCopy = bwCostPerCopy + colorCostPerCopy;
-  const totalAmount = pricePerCopy * copies;
+  const printSubtotal = pricePerCopy * copies;
+  const serviceCharge = settings.serviceCharge.enabled && printSubtotal > 0 ? settings.serviceCharge.fixed : 0;
+  const subtotalWithService = printSubtotal + serviceCharge;
+  const minimumChargeAdjustment = printSubtotal > 0
+    ? Math.max(0, settings.serviceCharge.minimumOrder - subtotalWithService)
+    : 0;
+  const totalAmount = subtotalWithService + minimumChargeAdjustment;
 
   return {
     bwPages,
     colorPages,
     totalPages,
     copies,
+    bwPagePrice,
+    colorPagePrice,
     bwCostPerCopy,
     colorCostPerCopy,
     pricePerCopy,
+    printSubtotal,
+    serviceCharge,
+    minimumOrderCharge: settings.serviceCharge.minimumOrder,
+    minimumChargeAdjustment,
     totalAmount,
   };
 }
@@ -888,9 +1722,15 @@ function normaliseOrder(payload) {
       colorPages: computed.colorPages,
       originalBwPages: Number(order.document?.originalBwPages || computed.bwPages),
       originalColorPages: Number(order.document?.originalColorPages || computed.colorPages),
+      bwPagePrice: computed.bwPagePrice,
+      colorPagePrice: computed.colorPagePrice,
       bwCostPerCopy: computed.bwCostPerCopy,
       colorCostPerCopy: computed.colorCostPerCopy,
       pricePerCopy: computed.pricePerCopy,
+      printSubtotal: computed.printSubtotal,
+      serviceCharge: computed.serviceCharge,
+      minimumOrderCharge: computed.minimumOrderCharge,
+      minimumChargeAdjustment: computed.minimumChargeAdjustment,
       printMode: sanitizeText(order.document?.printMode) || "original",
       convertedToBw: Boolean(order.document?.convertedToBw),
       savingsPerCopy: Number(order.document?.savingsPerCopy || 0),
@@ -911,6 +1751,8 @@ function normaliseOrder(payload) {
       failureReason: sanitizeText(payment.failureReason),
       verificationStatus: sanitizeText(payment.verificationStatus),
     },
+    status: normaliseOrderStatus(order.status, sanitizeText(payment.method) === "cod" ? "Pending" : "Paid"),
+    statusUpdatedAt: sanitizeText(order.statusUpdatedAt) || new Date().toISOString(),
   };
 
   if (!normalized.document.pagesLabel) {
@@ -1354,8 +2196,16 @@ async function assertUniqueTransactionId(order) {
 function buildVerificationChecks(order) {
   const checks = [
     "PDF page totals matched the black and white plus color page counts.",
-    `Amount matched automatic pricing: ${formatCurrency(order.document.pricePerCopy)} per copy x ${order.document.copies} copies = ${formatCurrency(order.amount)}.`,
+    `Amount matched automatic pricing: ${formatCurrency(order.document.pricePerCopy)} per copy x ${order.document.copies} copies = ${formatCurrency(order.document.printSubtotal || order.document.pricePerCopy * order.document.copies)}.`,
   ];
+
+  if (Number(order.document.serviceCharge || 0) > 0) {
+    checks.push(`Service charge applied: ${formatCurrency(order.document.serviceCharge)}.`);
+  }
+
+  if (Number(order.document.minimumChargeAdjustment || 0) > 0) {
+    checks.push(`Minimum order top-up applied: ${formatCurrency(order.document.minimumChargeAdjustment)}.`);
+  }
 
   if (order.document.printMode === "bw-only") {
     checks.push("Customer selected Black & White only mode for the print-ready PDF.");
@@ -1554,7 +2404,7 @@ function generateInvoicePdf(order, verificationChecks) {
     drawMetricCard(contentX + metricWidth + gutter, metricsY, metricWidth, "Black & White Pages", String(order.document.bwPages));
     drawMetricCard(contentX + (metricWidth + gutter) * 2, metricsY, metricWidth, "Color Pages", String(order.document.colorPages));
 
-    drawCard(contentX, 552, halfWidth, 150);
+    drawCard(contentX, 552, halfWidth, 178);
     doc.fillColor("#0f172a").font("Helvetica-Bold").fontSize(13).text("Print Summary", contentX + 18, 570);
     let summaryY = 602;
     summaryY = drawTableRow(contentX + 2, summaryY, halfWidth - 4, "Paper Size", order.document.paperSize.toUpperCase());
@@ -1562,23 +2412,48 @@ function generateInvoicePdf(order, verificationChecks) {
     summaryY = drawTableRow(contentX + 2, summaryY + 2, halfWidth - 4, "Print Mode", getPrintModeLabel(order));
     summaryY = drawTableRow(contentX + 2, summaryY + 2, halfWidth - 4, "Price Per Copy", formatCurrency(order.document.pricePerCopy));
 
-    drawCard(contentX + halfWidth + gutter, 552, halfWidth, 150);
+    drawCard(contentX + halfWidth + gutter, 552, halfWidth, 178);
     doc.fillColor("#0f172a").font("Helvetica-Bold").fontSize(13).text("Price Breakdown", contentX + halfWidth + gutter + 18, 570);
     let pricingY = 602;
     pricingY = drawTableRow(
       contentX + halfWidth + gutter + 2,
       pricingY,
       halfWidth - 4,
-      `${order.document.bwPages} B/W pages x ${formatCurrency(PRICE_BW)}`,
+      `${order.document.bwPages} B/W pages x ${formatCurrency(order.document.bwPagePrice ?? PRICE_BW)}`,
       formatCurrency(order.document.bwCostPerCopy)
     );
     pricingY = drawTableRow(
       contentX + halfWidth + gutter + 2,
       pricingY + 2,
       halfWidth - 4,
-      `${order.document.colorPages} color pages x ${formatCurrency(PRICE_COLOR)}`,
+      `${order.document.colorPages} color pages x ${formatCurrency(order.document.colorPagePrice ?? PRICE_COLOR)}`,
       formatCurrency(order.document.colorCostPerCopy)
     );
+    pricingY = drawTableRow(
+      contentX + halfWidth + gutter + 2,
+      pricingY + 2,
+      halfWidth - 4,
+      `Printing subtotal x ${order.document.copies} copies`,
+      formatCurrency(order.document.printSubtotal || order.document.pricePerCopy * order.document.copies)
+    );
+    if (Number(order.document.serviceCharge || 0) > 0) {
+      pricingY = drawTableRow(
+        contentX + halfWidth + gutter + 2,
+        pricingY + 2,
+        halfWidth - 4,
+        "Service charge",
+        formatCurrency(order.document.serviceCharge)
+      );
+    }
+    if (Number(order.document.minimumChargeAdjustment || 0) > 0) {
+      pricingY = drawTableRow(
+        contentX + halfWidth + gutter + 2,
+        pricingY + 2,
+        halfWidth - 4,
+        "Minimum order top-up",
+        formatCurrency(order.document.minimumChargeAdjustment)
+      );
+    }
     drawTableRow(
       contentX + halfWidth + gutter + 2,
       pricingY + 8,
@@ -1596,7 +2471,7 @@ function generateInvoicePdf(order, verificationChecks) {
     );
 
     if (order.document.notes) {
-      const notesY = 724;
+      const notesY = 752;
       const notesHeight = 46 + doc.heightOfString(order.document.notes, {
         width: contentWidth - 36,
         align: "left",
@@ -2004,6 +2879,7 @@ async function handlePdfAnalysis(response, request) {
 }
 
 function buildPublicConfig() {
+  const publicSettings = buildPublicSettings(runtimeSettings);
   return {
     businessName: BUSINESS_NAME,
     businessEmail: BUSINESS_EMAIL,
@@ -2014,10 +2890,9 @@ function buildPublicConfig() {
     upiPayeeName: UPI_PAYEE_NAME,
     upiMerchantCode: UPI_MERCHANT_CODE,
     maxForwardablePdfMb: MAX_FORWARDABLE_PDF_MB,
-    pricing: {
-      bw: PRICE_BW,
-      color: PRICE_COLOR,
-    },
+    pricing: publicSettings.pricing,
+    serviceCharge: publicSettings.serviceCharge,
+    settingsUpdatedAt: publicSettings.updatedAt,
     paymentTimeoutMinutes: PAYMENT_TIMEOUT_MINUTES,
     bwModeAvailable: true,
   };
@@ -2042,6 +2917,96 @@ const server = http.createServer(async (request, response) => {
       status: "ok",
       timestamp: new Date().toISOString(),
     });
+    return;
+  }
+
+  if (request.method === "GET" && pathname === "/api/settings/public") {
+    sendJson(response, 200, {
+      success: true,
+      config: buildPublicConfig(),
+    });
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/admin/login") {
+    try {
+      await handleAdminLogin(response, request);
+    } catch (error) {
+      sendJson(response, error.statusCode || 400, {
+        success: false,
+        error: error.message || "Admin login failed.",
+      });
+    }
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/admin/logout") {
+    await handleAdminLogout(response, request);
+    return;
+  }
+
+  if (request.method === "GET" && pathname === "/api/admin/session") {
+    await handleAdminSession(response, request);
+    return;
+  }
+
+  if (pathname.startsWith("/api/admin/")) {
+    if (!requireAdminSession(request, response)) {
+      return;
+    }
+
+    try {
+      if (request.method === "GET" && pathname === "/api/admin/dashboard") {
+        await handleAdminDashboard(response, requestUrl);
+        return;
+      }
+
+      if (request.method === "GET" && pathname === "/api/admin/orders") {
+        await handleAdminDashboard(response, requestUrl);
+        return;
+      }
+
+      if (request.method === "PUT" && pathname === "/api/admin/settings") {
+        await handleAdminSettingsUpdate(response, request);
+        return;
+      }
+
+      const statusMatch = pathname.match(/^\/api\/admin\/orders\/([^/]+)\/status$/);
+      if (request.method === "PATCH" && statusMatch) {
+        await handleAdminOrderStatusUpdate(response, request, decodeURIComponent(statusMatch[1]));
+        return;
+      }
+
+      const downloadMatch = pathname.match(/^\/api\/admin\/orders\/([^/]+)\/download$/);
+      if (request.method === "GET" && downloadMatch) {
+        await handleAdminOrderDownload(response, requestUrl, decodeURIComponent(downloadMatch[1]));
+        return;
+      }
+    } catch (error) {
+      sendJson(response, error.statusCode || 500, {
+        success: false,
+        error: error.message || "Admin request failed.",
+      });
+      return;
+    }
+
+    sendJson(response, 404, { success: false, error: "Admin endpoint not found." });
+    return;
+  }
+
+  if (request.method === "GET" && pathname === "/api/orders/lookup") {
+    await handleCustomerOrderLookup(response, requestUrl);
+    return;
+  }
+
+  if (request.method === "GET" && pathname === "/api/orders/customer") {
+    await handleCustomerOrders(response, requestUrl);
+    return;
+  }
+
+  const customerInvoiceMatch = pathname.match(/^\/api\/orders\/([^/]+)\/invoice$/);
+  if (request.method === "GET" && customerInvoiceMatch) {
+    await handleCustomerInvoiceDownload(response, requestUrl, decodeURIComponent(customerInvoiceMatch[1]));
     return;
   }
 

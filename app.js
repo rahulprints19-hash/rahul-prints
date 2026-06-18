@@ -9,6 +9,7 @@ const APP_CONFIG = window.APP_CONFIG || {
   upiMerchantCode: "",
   maxForwardablePdfMb: 18,
   pricing: { bw: 1, color: 10 },
+  serviceCharge: { enabled: false, fixed: 0, minimumOrder: 0 },
   paymentTimeoutMinutes: 5,
 };
 
@@ -148,6 +149,7 @@ const DEVICE_PAYMENT_PROFILES = {
 document.addEventListener("DOMContentLoaded", () => {
   wireElements();
   applyPublicConfig();
+  void refreshPublicConfig();
   configurePdfWorker();
   bindEvents();
   initialiseExperience();
@@ -174,6 +176,9 @@ function wireElements() {
     "totalPrice",
     "bwPricingLine",
     "colorPricingLine",
+    "printSubtotalLine",
+    "serviceChargePricingLine",
+    "minimumOrderPricingLine",
     "grandTotalLine",
     "uploadForm",
     "copies",
@@ -312,6 +317,73 @@ function applyPublicConfig() {
   updateDeviceAwarePaymentUi();
 }
 
+async function refreshPublicConfig() {
+  try {
+    const response = await fetch("/api/settings/public", { cache: "no-store" });
+    const result = await readJsonResponse(response);
+    if (!response.ok || !result.success || !result.config) {
+      return;
+    }
+
+    mergePublicConfig(result.config);
+    applyPublicConfig();
+    refreshPricingPreview();
+  } catch {
+    // The server-rendered config is enough when the refresh endpoint is unavailable.
+  }
+}
+
+function mergePublicConfig(nextConfig = {}) {
+  if (nextConfig.pricing) {
+    APP_CONFIG.pricing = {
+      ...APP_CONFIG.pricing,
+      ...nextConfig.pricing,
+    };
+  }
+  if (nextConfig.serviceCharge) {
+    APP_CONFIG.serviceCharge = {
+      ...getServiceChargeConfig(),
+      ...nextConfig.serviceCharge,
+    };
+  }
+
+  Object.keys(nextConfig).forEach((key) => {
+    if (!["pricing", "serviceCharge"].includes(key)) {
+      APP_CONFIG[key] = nextConfig[key];
+    }
+  });
+}
+
+function handlePublicConfigUpdated(event) {
+  mergePublicConfig(event.detail?.config || event.detail || {});
+  applyPublicConfig();
+  refreshPricingPreview();
+  syncCurrentOrderPricingAfterConfigUpdate();
+}
+
+function syncCurrentOrderPricingAfterConfigUpdate() {
+  if (!state.currentOrder || !state.pdfAnalysis || !elements.fileInput?.files?.[0]) {
+    return;
+  }
+
+  try {
+    state.currentOrder = buildOrderFromForm({
+      orderId: state.currentOrder.orderId,
+      createdAt: state.currentOrder.createdAt,
+    });
+    if (isPendingPaymentSessionVisible()) {
+      renderPaymentSession({
+        restartTimer: true,
+        resetConfirmationFields: true,
+        keepScroll: true,
+      });
+      showToast("Pricing was updated. Review the refreshed total before paying.");
+    }
+  } catch {
+    // If the form is incomplete, the next review action will rebuild the order.
+  }
+}
+
 function configurePdfWorker() {
   if (window.pdfjsLib) {
     window.pdfjsLib.GlobalWorkerOptions.workerSrc =
@@ -378,6 +450,7 @@ function hasBlackWhiteConversionTools() {
 
 function bindEvents() {
   document.addEventListener("visibilitychange", handlePaymentAppVisibilityChange);
+  window.addEventListener("rahulprints:config-updated", handlePublicConfigUpdated);
   elements.fileInput.addEventListener("change", handleFileSelection);
   elements.bwModeToggle.addEventListener("change", handleBlackWhiteModeChange);
   elements.copies.addEventListener("input", handleCopiesChange);
@@ -1090,9 +1163,15 @@ function buildOrderFromForm(existingMeta = {}) {
       colorPages: pricing.colorPages,
       originalBwPages: pricing.originalBwPages,
       originalColorPages: pricing.originalColorPages,
+      bwPagePrice: APP_CONFIG.pricing.bw,
+      colorPagePrice: APP_CONFIG.pricing.color,
       bwCostPerCopy: pricing.bwCostPerCopy,
       colorCostPerCopy: pricing.colorCostPerCopy,
       pricePerCopy: pricing.totalPerCopy,
+      printSubtotal: pricing.printSubtotal,
+      serviceCharge: pricing.serviceCharge,
+      minimumOrderCharge: pricing.minimumOrderCharge,
+      minimumChargeAdjustment: pricing.minimumChargeAdjustment,
       printMode: pricing.convertedToBw ? "bw-only" : "original",
       printModeLabel: pricing.printModeLabel,
       convertedToBw: pricing.convertedToBw,
@@ -1107,6 +1186,7 @@ function buildPricingSummary() {
     return null;
   }
 
+  const serviceChargeConfig = getServiceChargeConfig();
   const copies = getCopiesValue();
   const originalBwPages = state.pdfAnalysis.bwPages;
   const originalColorPages = state.pdfAnalysis.colorPages;
@@ -1116,6 +1196,12 @@ function buildPricingSummary() {
   const bwCostPerCopy = bwPages * APP_CONFIG.pricing.bw;
   const colorCostPerCopy = colorPages * APP_CONFIG.pricing.color;
   const totalPerCopy = bwCostPerCopy + colorCostPerCopy;
+  const printSubtotal = totalPerCopy * copies;
+  const serviceCharge = serviceChargeConfig.enabled && printSubtotal > 0 ? serviceChargeConfig.fixed : 0;
+  const subtotalWithService = printSubtotal + serviceCharge;
+  const minimumChargeAdjustment = printSubtotal > 0
+    ? Math.max(0, serviceChargeConfig.minimumOrder - subtotalWithService)
+    : 0;
   const savingsPerCopy = useBlackWhiteOnly
     ? originalColorPages * Math.max(APP_CONFIG.pricing.color - APP_CONFIG.pricing.bw, 0)
     : 0;
@@ -1131,7 +1217,11 @@ function buildPricingSummary() {
     bwCostPerCopy,
     colorCostPerCopy,
     totalPerCopy,
-    grandTotal: totalPerCopy * copies,
+    printSubtotal,
+    serviceCharge,
+    minimumOrderCharge: serviceChargeConfig.minimumOrder,
+    minimumChargeAdjustment,
+    grandTotal: subtotalWithService + minimumChargeAdjustment,
     savingsPerCopy,
     convertedToBw,
     useBlackWhiteOnly,
@@ -1159,6 +1249,15 @@ function refreshPricingPreview() {
     elements.analysisBadgeText.textContent = "Calculated from uploaded PDF";
     elements.copiesPreview.textContent = String(getCopiesValue());
     elements.totalPrice.textContent = formatCurrency(0);
+    if (elements.printSubtotalLine) elements.printSubtotalLine.textContent = formatCurrency(0);
+    if (elements.serviceChargePricingLine) {
+      elements.serviceChargePricingLine.textContent = "No service charge applied";
+      elements.serviceChargePricingLine.closest(".breakdown-row")?.classList.add("is-hidden");
+    }
+    if (elements.minimumOrderPricingLine) {
+      elements.minimumOrderPricingLine.textContent = "Minimum order charge already met";
+      elements.minimumOrderPricingLine.closest(".breakdown-row")?.classList.add("is-hidden");
+    }
     elements.grandTotalLine.textContent = formatCurrency(0);
     updateBlackWhiteModeUi(null);
     return;
@@ -1178,11 +1277,29 @@ function refreshPricingPreview() {
   elements.colorPricingLine.textContent = summary.convertedToBw
     ? "Color charges removed. All pages will be converted into black and white for printing."
     : `${summary.colorPages} pages x ${formatCurrency(APP_CONFIG.pricing.color)} = ${formatCurrency(summary.colorCostPerCopy)} per copy`;
+  if (elements.printSubtotalLine) {
+    elements.printSubtotalLine.textContent =
+      `${formatCurrency(summary.totalPerCopy)} x ${summary.copies} copies = ${formatCurrency(summary.printSubtotal)}`;
+  }
+  if (elements.serviceChargePricingLine) {
+    const showServiceCharge = summary.serviceCharge > 0;
+    elements.serviceChargePricingLine.closest(".breakdown-row")?.classList.toggle("is-hidden", !showServiceCharge);
+    elements.serviceChargePricingLine.textContent = showServiceCharge
+      ? `Service charge = ${formatCurrency(summary.serviceCharge)}`
+      : "No service charge applied";
+  }
+  if (elements.minimumOrderPricingLine) {
+    const showMinimumTopup = summary.minimumChargeAdjustment > 0;
+    elements.minimumOrderPricingLine.closest(".breakdown-row")?.classList.toggle("is-hidden", !showMinimumTopup);
+    elements.minimumOrderPricingLine.textContent = showMinimumTopup
+      ? `Minimum order top-up = ${formatCurrency(summary.minimumChargeAdjustment)}`
+      : "Minimum order charge already met";
+  }
   elements.grandTotalLine.textContent = summary.convertedToBw
-    ? `${formatCurrency(summary.totalPerCopy)} x ${summary.copies} copies = ${formatCurrency(summary.grandTotal)} | You save ${formatCurrency(
+    ? `${formatCurrency(summary.printSubtotal)} + fees = ${formatCurrency(summary.grandTotal)} | You save ${formatCurrency(
         summary.savingsPerCopy * summary.copies
       )}`
-    : `${formatCurrency(summary.totalPerCopy)} x ${summary.copies} copies = ${formatCurrency(summary.grandTotal)}`;
+    : `Total payable = ${formatCurrency(summary.grandTotal)}`;
   elements.costDisplay.classList.remove("is-analyzing");
   elements.analysisBadgeText.classList.remove("is-working");
   elements.costDisplay.classList.remove("is-hidden");
@@ -1209,6 +1326,15 @@ function renderAnalysisLoadingState() {
     : "Opening the PDF and reading the page count...";
   elements.colorPricingLine.textContent =
     "Please wait a moment. The system is checking each page to separate black & white pages from color pages.";
+  if (elements.printSubtotalLine) elements.printSubtotalLine.textContent = "Subtotal will appear after scanning.";
+  if (elements.serviceChargePricingLine) {
+    elements.serviceChargePricingLine.textContent = "Service charge will appear after scanning.";
+    elements.serviceChargePricingLine.closest(".breakdown-row")?.classList.add("is-hidden");
+  }
+  if (elements.minimumOrderPricingLine) {
+    elements.minimumOrderPricingLine.textContent = "Minimum order check will appear after scanning.";
+    elements.minimumOrderPricingLine.closest(".breakdown-row")?.classList.add("is-hidden");
+  }
   elements.grandTotalLine.textContent = "Price will appear automatically as soon as the scan finishes.";
   elements.costDisplay.classList.add("is-analyzing");
   elements.costDisplay.classList.remove("is-hidden");
@@ -1222,9 +1348,14 @@ function renderPaymentSession({ restartTimer, resetConfirmationFields, keepScrol
 
   elements.paymentAmount.textContent = formatCurrency(order.amount);
   elements.orderIdDisplay.textContent = order.orderId;
+  const feeSummary = [
+    Number(order.document?.serviceCharge || 0) > 0 ? `${formatCurrency(order.document.serviceCharge)} service charge` : "",
+    Number(order.document?.minimumChargeAdjustment || 0) > 0 ? `${formatCurrency(order.document.minimumChargeAdjustment)} minimum top-up` : "",
+  ].filter(Boolean).join(" + ");
   elements.paymentDetails.textContent =
     `${order.document.bwPages} B/W pages + ${order.document.colorPages} color pages | ` +
-    `${order.document.copies} copies | ${formatCurrency(order.document.pricePerCopy)} per copy | ${getOrderPrintModeLabel(order)}`;
+    `${order.document.copies} copies | ${formatCurrency(order.document.pricePerCopy)} per copy | ${getOrderPrintModeLabel(order)}` +
+    (feeSummary ? ` | ${feeSummary}` : "");
 
   elements.paymentSection.classList.remove("is-hidden");
   elements.paymentSuccess.classList.add("is-hidden");
@@ -2994,6 +3125,15 @@ function getMaxForwardablePdfBytes() {
   return getMaxForwardablePdfMb() * 1024 * 1024;
 }
 
+function getServiceChargeConfig() {
+  const config = APP_CONFIG.serviceCharge || {};
+  return {
+    enabled: Boolean(config.enabled),
+    fixed: Math.max(0, Number(config.fixed || 0)),
+    minimumOrder: Math.max(0, Number(config.minimumOrder || 0)),
+  };
+}
+
 function normaliseTransactionId(value) {
   return String(value || "").replace(/\s+/g, "").toUpperCase();
 }
@@ -3058,6 +3198,26 @@ function renderReceiptItem(label, value) {
   `;
 }
 
+function buildReceiptCostItems(receipt, result, currentOrder) {
+  const document = currentOrder.document || {};
+  const printSubtotal = Number(receipt.printSubtotal || document.printSubtotal || result.amount || 0);
+  const serviceCharge = Number(receipt.serviceCharge || document.serviceCharge || 0);
+  const minimumChargeAdjustment = Number(receipt.minimumChargeAdjustment || document.minimumChargeAdjustment || 0);
+  const items = [
+    renderReceiptItem("Printing Subtotal", formatCurrency(printSubtotal)),
+  ];
+
+  if (serviceCharge > 0) {
+    items.push(renderReceiptItem("Service Charge", formatCurrency(serviceCharge)));
+  }
+
+  if (minimumChargeAdjustment > 0) {
+    items.push(renderReceiptItem("Minimum Order Top-up", formatCurrency(minimumChargeAdjustment)));
+  }
+
+  return items.join("");
+}
+
 function buildReceiptPaymentItems(receipt, result, currentOrder) {
   if (receipt.paymentMethod === "Cash on Pickup") {
     return [
@@ -3070,7 +3230,7 @@ function buildReceiptPaymentItems(receipt, result, currentOrder) {
       renderReceiptItem("Black & White Pages Count", String(receipt.bwPages || currentOrder.document?.bwPages || "0")),
       renderReceiptItem("Total Price", formatCurrency(receipt.totalPrice || result.amount)),
       renderReceiptItem("Date & Time", formatDateTime(receipt.paidAt || new Date().toISOString())),
-    ].join("");
+    ].join("") + buildReceiptCostItems(receipt, result, currentOrder);
   }
 
   if (receipt.gatewayProvider === "Razorpay" || /razorpay/i.test(receipt.paymentMethod || "")) {
@@ -3092,7 +3252,7 @@ function buildReceiptPaymentItems(receipt, result, currentOrder) {
       renderReceiptItem("Total Price", formatCurrency(receipt.totalPrice || result.amount)),
       renderReceiptItem("Payment Status", receipt.paymentStatus || "Payment Successful"),
       renderReceiptItem("Date & Time", formatDateTime(receipt.paidAt || new Date().toISOString())),
-    ].join("");
+    ].join("") + buildReceiptCostItems(receipt, result, currentOrder);
   }
 
   return [
@@ -3106,7 +3266,7 @@ function buildReceiptPaymentItems(receipt, result, currentOrder) {
     renderReceiptItem("Total Price", formatCurrency(receipt.totalPrice || result.amount)),
     renderReceiptItem("Payment Status", receipt.paymentStatus || "Payment Successful"),
     renderReceiptItem("Date & Time", formatDateTime(receipt.paidAt || new Date().toISOString())),
-  ].join("");
+  ].join("") + buildReceiptCostItems(receipt, result, currentOrder);
 }
 
 function getFriendlyPdfAnalysisErrorMessage(error) {
